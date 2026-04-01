@@ -1,287 +1,220 @@
 #!/usr/bin/env python3
 """
 Forbes Australia — Fuel Price Tracker
-Fetches live data from FuelCheck NSW, WA FuelWatch, and AIP.
-Run on a cron every 30 minutes:
-  */30 * * * * /usr/bin/python3 /path/to/fetch_prices.py >> /path/to/fetch.log 2>&1
+Fetches live station-level data from FuelCheck NSW API every 6 hours.
+Outputs:
+  data/stations-nsw.json  — all stations with prices (for the map)
+  data/prices.json        — city averages (for the overview block)
 """
 
 import requests
 import json
-import xml.etree.ElementTree as ET
 import os
 import sys
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-NSW_API_KEY = os.environ.get("NSW_API_KEY", "")  # Register at api.nsw.gov.au
-OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "data", "prices.json")
+API_KEY    = os.environ.get("NSW_API_KEY", "")
+API_SECRET = os.environ.get("NSW_API_SECRET", "")
+BASE_URL   = "https://api.onegov.nsw.gov.au/FuelCheckApp/v1/fuel"
 
-# Excise cut effective 2026-04-01
+STATIONS_FILE = os.path.join(os.path.dirname(__file__), "data", "stations-nsw.json")
+PRICES_FILE   = os.path.join(os.path.dirname(__file__), "data", "prices.json")
+
+FUEL_LABELS = {
+    "U91": "Unleaded 91",
+    "E10": "E10 Unleaded",
+    "U95": "Premium 95",
+    "U98": "Premium 98",
+    "DL":  "Diesel",
+    "PDL": "Premium Diesel",
+    "E85": "Ethanol E85",
+    "LPG": "LPG",
+}
+
+# City-to-suburb mapping for city average calculations
+CITY_SUBURBS = {
+    "Sydney":    ["Sydney", "Parramatta", "Bondi", "Chatswood", "Penrith", "Liverpool",
+                  "Blacktown", "Hurstville", "Hornsby", "Campbelltown", "Manly"],
+    "Newcastle": ["Newcastle", "Maitland", "Cessnock", "Lake Macquarie", "Charlestown"],
+    "Wollongong":["Wollongong", "Shellharbour", "Kiama", "Nowra"],
+    "Central Coast":["Gosford", "Wyong", "Tuggerah", "The Entrance"],
+}
+
 EXCISE_BEFORE_CPL = 52.6
 EXCISE_AFTER_CPL  = 26.3
-EXCISE_CUT_CPL    = EXCISE_BEFORE_CPL - EXCISE_AFTER_CPL  # 26.3
-
-# As-at snapshot from ACCC (week ending 2026-03-29) — fallback if APIs fail
-ACCC_SNAPSHOT = {
-    "Sydney":    {"ulp91": 244.0, "diesel": 303.5, "prem95": 258.0},
-    "Melbourne": {"ulp91": 256.0, "diesel": 306.0, "prem95": 268.0},
-    "Brisbane":  {"ulp91": 240.5, "diesel": 299.0, "prem95": 252.0},
-    "Perth":     {"ulp91": 242.0, "diesel": 301.0, "prem95": 254.0},
-    "Adelaide":  {"ulp91": 248.0, "diesel": 305.0, "prem95": 260.0},
-    "Canberra":  {"ulp91": 251.0, "diesel": 307.0, "prem95": 263.0},
-    "Darwin":    {"ulp91": 262.0, "diesel": 312.0, "prem95": 274.0},
-    "Hobart":    {"ulp91": 255.0, "diesel": 308.0, "prem95": 267.0},
-}
-
-# National fuel reserves (source: DISR / ACCC, as of 2026-03-28)
-RESERVES = {
-    "petrol_days":   37,
-    "diesel_days":   30,
-    "jet_fuel_days": 29,
-    "as_of":         "2026-03-28",
-    "source":        "DISR / ACCC",
-}
 
 
-# ─── NSW FUELCHECK ─────────────────────────────────────────────────────────────
+# ─── AUTH ─────────────────────────────────────────────────────────────────────
 
-def fetch_nsw_prices():
-    """
-    FuelCheck NSW real-time API.
-    Docs: https://api.nsw.gov.au/Product/Index/22
-    Register for a key at https://api.nsw.gov.au/
-    """
-    if not NSW_API_KEY:
-        print("  [NSW] No API key — skipping live fetch", file=sys.stderr)
-        return {}
-
-    url = "https://api.onegov.nsw.gov.au/FuelCheckApp/v1/fuel/prices"
-    headers = {
-        "apikey":       NSW_API_KEY,
-        "Authorization": f"Bearer {NSW_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
-        prices = resp.json().get("prices", [])
-
-        by_type = {}
-        for p in prices:
-            ft  = p.get("fueltype", "").upper()
-            cpl = p.get("price", 0)
-            if ft and cpl:
-                by_type.setdefault(ft, []).append(float(cpl))
-
-        result = {}
-        for ft, vals in by_type.items():
-            result[ft] = {
-                "avg_cpl": round(sum(vals) / len(vals), 1),
-                "min_cpl": round(min(vals), 1),
-                "max_cpl": round(max(vals), 1),
-                "stations": len(vals),
-            }
-        print(f"  [NSW] {sum(len(v) for v in by_type.values())} price points across {len(result)} fuel types")
-        return result
-
-    except Exception as e:
-        print(f"  [NSW] Error: {e}", file=sys.stderr)
-        return {}
-
-
-# ─── WA FUELWATCH ──────────────────────────────────────────────────────────────
-
-def fetch_wa_prices():
-    """
-    WA FuelWatch daily RSS feed.
-    Docs: https://www.fuelwatch.wa.gov.au
-    No key required.
-    """
-    url = "https://www.fuelwatch.wa.gov.au/fuelwatch/pages/public/contentholder.jspx?key=rss"
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-
-        by_type = {}
-        for item in root.findall(".//item"):
-            # FuelWatch RSS uses custom tags — try common variants
-            price_el = (
-                item.find("{http://www.fuelwatch.wa.gov.au/rss}Price") or
-                item.find("price") or
-                item.find("Price")
-            )
-            type_el = (
-                item.find("{http://www.fuelwatch.wa.gov.au/rss}FuelType") or
-                item.find("fueltype") or
-                item.find("FuelType")
-            )
-            if price_el is not None and type_el is not None:
-                try:
-                    ft    = type_el.text.strip()
-                    price = float(price_el.text.strip())
-                    by_type.setdefault(ft, []).append(price)
-                except (ValueError, AttributeError):
-                    pass
-
-        result = {}
-        for ft, vals in by_type.items():
-            result[ft] = {
-                "avg_cpl": round(sum(vals) / len(vals), 1),
-                "min_cpl": round(min(vals), 1),
-                "max_cpl": round(max(vals), 1),
-                "stations": len(vals),
-            }
-        print(f"  [WA] {sum(len(v) for v in by_type.values())} price points across {len(result)} fuel types")
-        return result
-
-    except Exception as e:
-        print(f"  [WA] Error: {e}", file=sys.stderr)
-        return {}
-
-
-# ─── AIP TERMINAL GATE PRICES ──────────────────────────────────────────────────
-
-def fetch_aip_tgp():
-    """
-    Australian Institute of Petroleum — daily Terminal Gate Prices.
-    Docs: https://www.aip.com.au/pricing
-    No key required.
-    """
-    url = "http://api.aip.com.au/public/pricing"
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        print(f"  [AIP] Got TGP data")
-        return data
-    except Exception as e:
-        print(f"  [AIP] Error: {e}", file=sys.stderr)
-        return {}
-
-
-# ─── EXCISE PASS-THROUGH DETECTOR ─────────────────────────────────────────────
-
-def compute_excise_passthrough(nsw: dict, prev_snapshot: dict) -> dict:
-    """
-    Compare today's NSW ULP avg to pre-cut baseline.
-    Returns how much of the 26.3cpl cut has actually reached the pump.
-    """
-    current_ulp = nsw.get("U91", {}).get("avg_cpl") or nsw.get("E10", {}).get("avg_cpl")
-    baseline    = prev_snapshot.get("Sydney", {}).get("ulp91", 252.0)
-
-    if not current_ulp:
-        return {"expected_cpl": EXCISE_CUT_CPL, "actual_cpl": None, "pct_passed": None}
-
-    actual_drop = round(baseline - current_ulp, 1)
-    pct         = round((actual_drop / EXCISE_CUT_CPL) * 100, 1) if actual_drop > 0 else 0.0
-
+def auth_headers():
+    import base64
+    token = base64.b64encode(f"{API_KEY}:{API_SECRET}".encode()).decode()
     return {
-        "baseline_cpl":   baseline,
-        "current_cpl":    current_ulp,
-        "expected_cpl":   EXCISE_CUT_CPL,
-        "actual_drop_cpl": max(actual_drop, 0),
-        "pct_passed":     max(pct, 0),
+        "Authorization": f"Basic {token}",
+        "apikey":        API_KEY,
+        "Content-Type":  "application/json",
     }
 
 
-# ─── HISTORICAL PRICES (crisis timeline) ──────────────────────────────────────
+# ─── API CALLS ────────────────────────────────────────────────────────────────
 
-def build_history():
+def fetch_stations():
+    print("  Fetching station list...")
+    resp = requests.get(f"{BASE_URL}/stations", headers=auth_headers(), timeout=30)
+    resp.raise_for_status()
+    stations = resp.json().get("stations", [])
+    print(f"  → {len(stations)} stations")
+    return stations
+
+def fetch_prices():
+    print("  Fetching live prices...")
+    resp = requests.get(f"{BASE_URL}/prices", headers=auth_headers(), timeout=30)
+    resp.raise_for_status()
+    prices = resp.json().get("prices", [])
+    print(f"  → {len(prices)} price entries")
+    return prices
+
+
+# ─── DATA PROCESSING ──────────────────────────────────────────────────────────
+
+def merge(stations, prices):
     """
-    30-day price history for the chart.
-    Sources: ACCC weekly monitoring + AIP TGP data.
-    Update the tail entry each run with live data.
+    Merge station details with their current prices.
+    API prices are in cents/litre (e.g. 244.0 = $2.44/L).
+    We store as dollars for clean display.
     """
-    return [
-        {"date": "2026-03-01", "ulp91": 212.0, "diesel": 263.0},
-        {"date": "2026-03-04", "ulp91": 218.0, "diesel": 270.0},
-        {"date": "2026-03-08", "ulp91": 221.0, "diesel": 276.0},
-        {"date": "2026-03-11", "ulp91": 228.0, "diesel": 282.0},
-        {"date": "2026-03-15", "ulp91": 234.0, "diesel": 289.0},
-        {"date": "2026-03-18", "ulp91": 239.0, "diesel": 294.0},
-        {"date": "2026-03-22", "ulp91": 245.0, "diesel": 299.0},
-        {"date": "2026-03-25", "ulp91": 249.0, "diesel": 302.0},
-        {"date": "2026-03-29", "ulp91": 252.0, "diesel": 303.5},
-        # ← script appends today's live value below
-    ]
+    # Index prices by station code
+    price_index = defaultdict(dict)
+    for p in prices:
+        code  = str(p.get("stationcode", ""))
+        ftype = p.get("fueltype", "").upper()
+        raw   = p.get("price", 0)
+        if code and ftype and raw:
+            price_index[code][ftype] = round(float(raw) / 100, 3)
 
+    result = []
+    for s in stations:
+        code = str(s.get("code", ""))
+        loc  = s.get("location", {})
+        lat  = loc.get("latitude")  or loc.get("lat")
+        lng  = loc.get("longitude") or loc.get("lng")
 
-# ─── MAIN ──────────────────────────────────────────────────────────────────────
+        if not lat or not lng:
+            continue
 
-def main():
-    now = datetime.now(timezone.utc)
-    print(f"[{now.isoformat()}] Fetching fuel prices...")
+        station_prices = price_index.get(code, {})
+        if not station_prices:
+            continue  # skip stations with no prices
 
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
-
-    print("Fetching NSW FuelCheck...")
-    nsw = fetch_nsw_prices()
-
-    print("Fetching WA FuelWatch...")
-    wa = fetch_wa_prices()
-
-    print("Fetching AIP Terminal Gate Prices...")
-    aip = fetch_aip_tgp()
-
-    # Build city prices — prefer live NSW/WA data, fall back to ACCC snapshot
-    cities = {}
-    for city, snap in ACCC_SNAPSHOT.items():
-        cities[city] = dict(snap)  # start from snapshot
-
-    # Overlay live NSW data for Sydney
-    if nsw:
-        u91 = nsw.get("U91", {}).get("avg_cpl")
-        dl  = nsw.get("DL", {}).get("avg_cpl")
-        u95 = nsw.get("U95", {}).get("avg_cpl")
-        if u91: cities["Sydney"]["ulp91"]  = u91
-        if dl:  cities["Sydney"]["diesel"] = dl
-        if u95: cities["Sydney"]["prem95"] = u95
-
-    # Overlay live WA data for Perth
-    if wa:
-        # WA FuelWatch fuel type names may differ — common variants
-        u91 = (wa.get("Unleaded", {}) or wa.get("ULP", {}) or wa.get("91", {})).get("avg_cpl")
-        dl  = (wa.get("Diesel", {}) or wa.get("DL", {})).get("avg_cpl")
-        if u91: cities["Perth"]["ulp91"]  = u91
-        if dl:  cities["Perth"]["diesel"] = dl
-
-    # Append today to history
-    history = build_history()
-    today_str = now.strftime("%Y-%m-%d")
-    if history[-1]["date"] != today_str:
-        history.append({
-            "date":   today_str,
-            "ulp91":  cities["Sydney"]["ulp91"],
-            "diesel": cities["Sydney"]["diesel"],
+        result.append({
+            "code":     code,
+            "name":     s.get("name", "").strip(),
+            "brand":    s.get("brand", "").strip(),
+            "address":  s.get("address", "").strip(),
+            "suburb":   s.get("suburb", "").strip(),
+            "postcode": str(s.get("postcode", "")).strip(),
+            "state":    s.get("state", "NSW"),
+            "lat":      round(float(lat), 6),
+            "lng":      round(float(lng), 6),
+            "prices":   station_prices,
         })
 
-    output = {
-        "updated_at":         now.isoformat(),
-        "source_note":        "Live: FuelCheck NSW + WA FuelWatch. National averages: ACCC weekly monitoring.",
+    return result
+
+def city_averages(stations):
+    """Calculate average prices by major city for the overview block."""
+    cities = {}
+    for city, keywords in CITY_SUBURBS.items():
+        city_stations = [
+            s for s in stations
+            if any(k.lower() in s["suburb"].lower() for k in keywords)
+        ]
+        if not city_stations:
+            continue
+        avgs = {}
+        for ftype in ["U91", "E10", "DL", "U95", "U98"]:
+            vals = [s["prices"][ftype] for s in city_stations if ftype in s["prices"]]
+            if vals:
+                avgs[ftype] = round(sum(vals) / len(vals), 3)
+        cities[city] = avgs
+    return cities
+
+
+# ─── MAIN ─────────────────────────────────────────────────────────────────────
+
+def main():
+    if not API_KEY or not API_SECRET:
+        print("ERROR: NSW_API_KEY and NSW_API_SECRET environment variables required.", file=sys.stderr)
+        sys.exit(1)
+
+    now = datetime.now(timezone(timedelta(hours=10)))  # AEST
+    print(f"[{now.strftime('%Y-%m-%d %H:%M AEST')}] Fetching FuelCheck NSW...")
+
+    os.makedirs(os.path.dirname(STATIONS_FILE), exist_ok=True)
+
+    try:
+        raw_stations = fetch_stations()
+        raw_prices   = fetch_prices()
+    except requests.HTTPError as e:
+        print(f"API error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    stations = merge(raw_stations, raw_prices)
+    print(f"  → {len(stations)} stations with prices after merge")
+
+    # ── stations-nsw.json (map data) ──────────────────────────────────────────
+    stations_out = {
+        "updated_at":     now.isoformat(),
+        "station_count":  len(stations),
+        "fuel_types":     list(FUEL_LABELS.keys()),
+        "fuel_labels":    FUEL_LABELS,
+        "stations":       stations,
+    }
+    with open(STATIONS_FILE, "w") as f:
+        json.dump(stations_out, f, separators=(",", ":"))  # compact for size
+    size_kb = os.path.getsize(STATIONS_FILE) / 1024
+    print(f"  Saved {STATIONS_FILE} ({size_kb:.0f} KB)")
+
+    # ── prices.json (overview block) ──────────────────────────────────────────
+    avgs = city_averages(stations)
+
+    # National averages (all NSW stations)
+    nat = {}
+    for ftype in ["U91", "E10", "DL", "U95", "U98"]:
+        vals = [s["prices"][ftype] for s in stations if ftype in s["prices"]]
+        if vals:
+            nat[ftype] = round(sum(vals) / len(vals), 3)
+
+    prices_out = {
+        "updated_at": now.isoformat(),
         "excise": {
-            "before_cpl":     EXCISE_BEFORE_CPL,
-            "after_cpl":      EXCISE_AFTER_CPL,
-            "cut_cpl":        EXCISE_CUT_CPL,
+            "before_cpl": EXCISE_BEFORE_CPL,
+            "after_cpl":  EXCISE_AFTER_CPL,
+            "cut_cpl":    round(EXCISE_BEFORE_CPL - EXCISE_AFTER_CPL, 1),
             "effective_date": "2026-04-01",
         },
-        "reserves":           RESERVES,
-        "cities":             cities,
-        "excise_passthrough": compute_excise_passthrough(nsw, ACCC_SNAPSHOT),
-        "nsw_by_fuel":        nsw,
-        "wa_by_fuel":         wa,
-        "aip_tgp":            aip,
-        "history":            history,
+        "reserves": {
+            "petrol_days":   37,
+            "diesel_days":   30,
+            "jet_fuel_days": 29,
+            "as_of":         "2026-03-28",
+            "source":        "DISR / ACCC",
+        },
+        "national": nat,
+        "cities":   avgs,
     }
+    with open(PRICES_FILE, "w") as f:
+        json.dump(prices_out, f, indent=2)
+    print(f"  Saved {PRICES_FILE}")
 
-    with open(OUTPUT_FILE, "w") as f:
-        json.dump(output, f, indent=2)
-
-    print(f"\nSaved → {OUTPUT_FILE}")
-    print(f"Sydney ULP:    {cities['Sydney']['ulp91']} cpl")
-    print(f"Sydney Diesel: {cities['Sydney']['diesel']} cpl")
+    if "U91" in nat:
+        print(f"\n  NSW avg ULP 91: ${nat['U91']:.3f}/L")
+    if "DL" in nat:
+        print(f"  NSW avg Diesel: ${nat['DL']:.3f}/L")
+    print("Done.")
 
 
 if __name__ == "__main__":
