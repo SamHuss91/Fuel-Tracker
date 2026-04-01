@@ -270,8 +270,13 @@ def main():
     working_url, prices_data = discover_and_fetch()
     print()
 
-    # Try to get reference data (station lat/lng)
-    station_index = fetch_reference_data(working_url)
+    # The /prices response includes both 'stations' and 'prices' keys.
+    # Build station index directly from the response first.
+    if prices_data.get("stations"):
+        station_index = build_station_index(prices_data["stations"])
+        print(f"  ✓ {len(station_index)} stations from prices response")
+    else:
+        station_index = fetch_reference_data(working_url)
     print()
 
     # Merge into stations list
@@ -281,6 +286,11 @@ def main():
     if not stations:
         print("ERROR: No stations with location data. Cannot build map.", file=sys.stderr)
         print("Prices data keys:", list(prices_data.keys()), file=sys.stderr)
+        # Print first station's keys to diagnose field name mismatch
+        raw_stations = prices_data.get("stations") or []
+        if raw_stations:
+            print("First station fields:", list(raw_stations[0].keys()), file=sys.stderr)
+            print("First station sample:", json.dumps(raw_stations[0], indent=2)[:500], file=sys.stderr)
         sys.exit(1)
 
     # stations-nsw.json
