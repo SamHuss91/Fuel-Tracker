@@ -178,10 +178,12 @@ def merge(prices_data, station_index):
         if not code or not ftype:
             continue
 
-        # Convert cents → dollars (handles both 244.0 and 2440 formats)
+        # API returns cents per litre (e.g. 229.5 = $2.295/L). Convert to dollars.
         price_dollars = float(raw)
-        if price_dollars > 10:          # it's in cents (e.g. 244.0 or 2440)
-            price_dollars = price_dollars / (10 if price_dollars < 1000 else 100)
+        if price_dollars > 10:
+            price_dollars = price_dollars / 100
+        # Normalise fuel type keys (API uses P95/P98, we standardise to U95/U98)
+        ftype = {"P95": "U95", "P98": "U98"}.get(ftype, ftype)
         by_station[code][ftype] = round(price_dollars, 3)
 
         # Capture any location data embedded in the price record

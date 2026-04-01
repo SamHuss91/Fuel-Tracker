@@ -235,8 +235,9 @@
         return '<div class="fa-popup-row"><span class="fa-popup-ft">' + labels[ft] + '</span> '
           + '<span class="fa-popup-val">' + fmt(s.prices[ft]) + '</span></div>';
       }).join('');
+    var addr = s.address + (s.suburb ? ', ' + s.suburb : '') + (s.postcode ? ' ' + s.postcode : '');
     return '<div class="fa-popup-name">' + s.name + '</div>'
-      + '<div class="fa-popup-addr">' + s.address + ', ' + s.suburb + ' ' + s.postcode + '</div>'
+      + '<div class="fa-popup-addr">' + addr + '</div>'
       + '<div class="fa-popup-prices">' + rows + '</div>';
   }
 
@@ -335,7 +336,7 @@
         + '<div class="fa-rank">' + (i+1) + '</div>'
         + '<div>'
           + '<div class="fa-station-name">' + s.name + '</div>'
-          + '<div class="fa-station-sub">' + s.address + ', ' + s.suburb + '</div>'
+          + '<div class="fa-station-sub">' + s.address + (s.suburb ? ', ' + s.suburb : '') + '</div>'
           + '<div class="fa-station-dist">' + s._dist.toFixed(1) + ' km away</div>'
         + '</div>'
         + '<div>'
