@@ -1,189 +1,200 @@
-<!-- Forbes Australia — NSW Fuel Price Map
-     Paste into a Gutenberg Custom HTML block.
-     Data updates automatically every 6 hours via GitHub Actions. -->
+<!-- Forbes Australia — NSW Fuel Price Tracker
+     Paste into a Gutenberg Custom HTML block. -->
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
-<div id="fa-map-root">
+<div id="fa-root">
 <style>
-  #fa-map-root {
-    --red:    #cc0000;
-    --green:  #16a34a;
-    --amber:  #d97706;
-    --cheap:  #16a34a;
-    --mid:    #d97706;
-    --pricey: #cc0000;
+  #fa-root {
     font-family: inherit;
     color: #111;
+    max-width: 860px;
+    margin: 0 auto;
   }
-  #fa-map-root * { box-sizing: border-box; margin: 0; padding: 0; }
+  #fa-root * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* Header */
-  .fa-hdr {
-    display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 8px;
-    border-bottom: 3px solid #111; padding-bottom: 12px; margin-bottom: 16px;
+  /* ── Header ── */
+  .fa-header {
+    border-top: 3px solid #c8102e;
+    padding-top: 16px;
+    margin-bottom: 24px;
   }
-  .fa-hdr-left { display: flex; align-items: center; gap: 10px; }
+  .fa-header-top {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  }
   .fa-live-dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--red); flex-shrink: 0;
-    animation: fa-blink 1.4s ease-in-out infinite;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #c8102e; flex-shrink: 0;
+    animation: fa-pulse 1.4s ease-in-out infinite;
   }
-  @keyframes fa-blink {
-    0%,100% { opacity:1; transform:scale(1); }
-    50%      { opacity:.25; transform:scale(.8); }
+  @keyframes fa-pulse {
+    0%,100% { opacity:1; } 50% { opacity:.2; }
   }
-  .fa-live-txt {
-    font-size: 11px; font-weight: 800; letter-spacing: .12em;
-    text-transform: uppercase; color: var(--red);
+  .fa-live-label {
+    font-size: 10px; font-weight: 800; letter-spacing: .15em;
+    text-transform: uppercase; color: #c8102e;
   }
-  .fa-title { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
-  .fa-updated { font-size: 11px; color: #888; }
+  .fa-title {
+    font-size: 26px; font-weight: 800; letter-spacing: -.03em;
+    line-height: 1.1; margin-bottom: 6px;
+  }
+  .fa-subtitle {
+    font-size: 12px; color: #888; font-weight: 400;
+  }
 
-  /* Fuel type tabs */
+  /* ── Fuel tabs ── */
   .fa-tabs {
-    display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px;
+    display: flex; gap: 0; margin-bottom: 16px;
+    border-bottom: 2px solid #eee;
   }
   .fa-tab {
-    padding: 5px 12px; font-size: 12px; font-weight: 700;
-    border: 1.5px solid #ddd; border-radius: 20px;
-    background: #fff; color: #555; cursor: pointer;
+    padding: 10px 16px; font-size: 12px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+    border: none; background: none; color: #999; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
     transition: all .15s;
   }
-  .fa-tab:hover { border-color: #999; color: #111; }
-  .fa-tab.active {
-    background: #111; border-color: #111; color: #fff;
-  }
+  .fa-tab:hover { color: #333; }
+  .fa-tab.active { color: #c8102e; border-bottom-color: #c8102e; }
 
-  /* Search */
+  /* ── Search ── */
   .fa-search {
     display: flex; gap: 8px; margin-bottom: 12px;
   }
   .fa-search input {
-    flex: 1; padding: 9px 14px; font-size: 14px; font-family: inherit;
-    border: 1.5px solid #ddd; border-radius: 6px; outline: none;
-    transition: border-color .15s;
+    flex: 1; padding: 10px 14px; font-size: 14px; font-family: inherit;
+    border: 1.5px solid #ddd; border-radius: 4px; outline: none;
+    color: #111; background: #fafafa;
+    transition: border-color .15s, background .15s;
   }
-  .fa-search input:focus { border-color: #111; }
+  .fa-search input:focus { border-color: #111; background: #fff; }
+  .fa-search input::placeholder { color: #bbb; }
   .fa-search button {
-    padding: 9px 18px; font-size: 13px; font-weight: 700;
+    padding: 10px 20px; font-size: 12px; font-weight: 800;
+    letter-spacing: .06em; text-transform: uppercase;
     font-family: inherit; background: #111; color: #fff;
-    border: none; border-radius: 6px; cursor: pointer;
+    border: none; border-radius: 4px; cursor: pointer;
     white-space: nowrap; transition: background .15s;
   }
-  .fa-search button:hover { background: #333; }
+  .fa-search button:hover { background: #c8102e; }
 
-  /* Map */
+  /* ── Map ── */
   #fa-map {
-    width: 100%; height: 480px; border-radius: 8px;
-    border: 1px solid #e5e5e5; margin-bottom: 16px;
-    background: #f5f5f5;
+    width: 100%; height: 460px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    background: #f0ede8;
+  }
+  .fa-map-note {
+    font-size: 11px; color: #aaa; margin-bottom: 20px;
   }
 
-  /* Coverage note */
-  .fa-coverage {
-    font-size: 11px; color: #888; text-align: center;
-    margin-bottom: 16px;
-  }
-
-  /* Results */
-  .fa-results { margin-bottom: 16px; }
-  .fa-results-hdr {
-    font-size: 12px; font-weight: 800; letter-spacing: .07em;
-    text-transform: uppercase; color: #555;
-    border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 0;
+  /* ── Results ── */
+  .fa-results { margin-bottom: 20px; }
+  .fa-results-title {
+    font-size: 13px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; color: #111;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #111;
+    margin-bottom: 0;
   }
   .fa-station {
     display: grid;
-    grid-template-columns: 32px 1fr auto;
-    align-items: center; gap: 10px;
-    padding: 11px 0; border-bottom: 1px solid #eee;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center; gap: 12px;
+    padding: 13px 0;
+    border-bottom: 1px solid #f0f0f0;
   }
   .fa-rank {
-    font-size: 13px; font-weight: 800; color: #bbb; text-align: center;
+    font-size: 11px; font-weight: 800; color: #ccc;
+    text-align: center;
   }
-  .fa-station-name { font-size: 14px; font-weight: 700; line-height: 1.3; }
-  .fa-station-sub  { font-size: 12px; color: #666; }
-  .fa-station-dist { font-size: 11px; color: #999; margin-top: 1px; }
+  .fa-rank-1 { color: #c8102e; font-size: 13px; }
+  .fa-sname { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .fa-saddr { font-size: 12px; color: #888; margin-bottom: 2px; }
+  .fa-sdist { font-size: 11px; color: #bbb; }
   .fa-price {
-    font-size: 18px; font-weight: 800; letter-spacing: -.02em; text-align: right;
+    font-size: 20px; font-weight: 800;
+    letter-spacing: -.03em; text-align: right;
+    line-height: 1;
   }
-  .fa-price-sub { font-size: 11px; color: #888; text-align: right; }
-  .price-cheap  { color: var(--cheap); }
-  .price-mid    { color: var(--mid); }
-  .price-pricey { color: var(--pricey); }
+  .fa-price-label { font-size: 10px; color: #aaa; text-align: right; margin-top: 3px; }
+  .c-cheap  { color: #16a34a; }
+  .c-mid    { color: #d97706; }
+  .c-pricey { color: #c8102e; }
 
-  /* Loading / error */
-  .fa-loading {
-    text-align: center; padding: 40px; color: #999; font-size: 14px;
-  }
-  .fa-error {
-    text-align: center; padding: 20px; color: var(--red);
-    font-size: 13px; background: #fff5f5; border-radius: 6px;
-  }
+  /* ── Popup ── */
+  .fp-name { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+  .fp-addr { font-size: 11px; color: #999; margin-bottom: 8px; line-height: 1.4; }
+  .fp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+  .fp-row  { font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+  .fp-ft   { color: #aaa; }
+  .fp-val  { font-weight: 700; }
 
-  /* Footer */
+  /* ── Footer ── */
   .fa-footer {
-    font-size: 11px; color: #aaa; border-top: 1px solid #eee;
-    padding-top: 10px; line-height: 1.7;
+    font-size: 11px; color: #bbb; line-height: 1.8;
+    border-top: 1px solid #eee; padding-top: 12px;
   }
-  .fa-footer a { color: #aaa; }
+  .fa-footer a { color: #bbb; text-decoration: underline; }
 
-  /* Leaflet popup override */
-  .fa-popup-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
-  .fa-popup-addr { font-size: 11px; color: #777; margin-bottom: 8px; }
-  .fa-popup-prices { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; }
-  .fa-popup-row { font-size: 12px; }
-  .fa-popup-ft  { color: #888; }
-  .fa-popup-val { font-weight: 700; }
+  /* ── Cluster override ── */
+  .marker-cluster-small,
+  .marker-cluster-medium,
+  .marker-cluster-large { background-color: rgba(17,17,17,.08) !important; }
+  .marker-cluster-small div,
+  .marker-cluster-medium div,
+  .marker-cluster-large div {
+    background-color: rgba(17,17,17,.75) !important;
+    color: #fff !important; font-weight: 700; font-size: 11px;
+  }
 </style>
 
-  <!-- Header -->
-  <div class="fa-hdr">
-    <div class="fa-hdr-left">
-      <span class="fa-live-dot"></span>
-      <span class="fa-live-txt">Live</span>
-      <span class="fa-title">Fuel Price Check</span>
-    </div>
-    <span class="fa-updated" id="fa-updated">Loading...</span>
+<!-- Header -->
+<div class="fa-header">
+  <div class="fa-header-top">
+    <span class="fa-live-dot"></span>
+    <span class="fa-live-label">Live</span>
   </div>
-
-  <!-- Fuel type tabs -->
-  <div class="fa-tabs" id="fa-tabs">
-    <button class="fa-tab active" data-ft="U91">Unleaded 91</button>
-    <button class="fa-tab" data-ft="E10">E10</button>
-    <button class="fa-tab" data-ft="DL">Diesel</button>
-    <button class="fa-tab" data-ft="U95">Premium 95</button>
-    <button class="fa-tab" data-ft="U98">Premium 98</button>
-  </div>
-
-  <!-- Search -->
-  <div class="fa-search">
-    <input type="text" id="fa-input" placeholder="Enter suburb or postcode in NSW…" />
-    <button onclick="faSearch()">Find cheapest</button>
-  </div>
-
-  <!-- Map -->
-  <div id="fa-map"></div>
-  <p class="fa-coverage">📍 Currently showing NSW. Station prices update every 6 hours.</p>
-
-  <!-- Results list -->
-  <div class="fa-results" id="fa-results" style="display:none">
-    <p class="fa-results-hdr" id="fa-results-hdr"></p>
-    <div id="fa-results-list"></div>
-  </div>
-
-  <!-- Footer -->
-  <p class="fa-footer">
-    Sources: <a href="https://api.nsw.gov.au/Product/Index/22" target="_blank" rel="noopener">FuelCheck NSW API</a> (real-time, 2,500+ stations) ·
-    <a href="https://www.accc.gov.au/about-us/publications/weekly-fuel-price-monitoring-update" target="_blank" rel="noopener">ACCC Fuel Monitoring</a>.
-    Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
-  </p>
-
+  <div class="fa-title">NSW Fuel Price Finder</div>
+  <div class="fa-subtitle" id="fa-updated">Loading…</div>
 </div>
+
+<!-- Tabs -->
+<div class="fa-tabs" id="fa-tabs">
+  <button class="fa-tab active" data-ft="U91">Unleaded 91</button>
+  <button class="fa-tab" data-ft="E10">E10</button>
+  <button class="fa-tab" data-ft="DL">Diesel</button>
+  <button class="fa-tab" data-ft="U95">Premium 95</button>
+  <button class="fa-tab" data-ft="U98">Premium 98</button>
+</div>
+
+<!-- Search -->
+<div class="fa-search">
+  <input type="text" id="fa-input" placeholder="Search by suburb or postcode…" />
+  <button onclick="faSearch()">Find cheapest</button>
+</div>
+
+<!-- Map -->
+<div id="fa-map"></div>
+<p class="fa-map-note">Showing all NSW stations · prices update every 6 hours</p>
+
+<!-- Results -->
+<div class="fa-results" id="fa-results" style="display:none">
+  <p class="fa-results-title" id="fa-results-hdr"></p>
+  <div id="fa-results-list"></div>
+</div>
+
+<!-- Footer -->
+<div class="fa-footer">
+  Data: <a href="https://api.nsw.gov.au/Product/Index/22" target="_blank" rel="noopener">FuelCheck NSW</a> (Service NSW) ·
+  <a href="https://www.accc.gov.au/about-us/publications/weekly-fuel-price-monitoring-update" target="_blank" rel="noopener">ACCC Fuel Monitoring</a> ·
+  Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
+</div>
+
+</div><!-- #fa-root -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
@@ -193,233 +204,170 @@
   var DATA_URL = 'https://raw.githubusercontent.com/SamHuss91/Fuel-Tracker/main/data/stations-nsw.json';
 
   var state = {
-    stations:  [],
-    fuelType:  'U91',
-    map:       null,
-    cluster:   null,
-    markerMap: {},   // code → marker
-    p25: 0, p75: 0,  // price percentiles for colour coding
+    stations: [], fuelType: 'U91',
+    map: null, cluster: null, markerMap: {},
+    p25: 0, p75: 0,
+    userLat: null, userLng: null,
   };
 
-  // ── Haversine distance (km) ───────────────────────────────────────────────
-  function dist(lat1, lng1, lat2, lng2) {
-    var R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLng = (lng2-lng1)*Math.PI/180;
-    var a = Math.sin(dLat/2)*Math.sin(dLat/2)
-          + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)
-          * Math.sin(dLng/2)*Math.sin(dLng/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  function dist(a, b, c, d) {
+    var R=6371, dL=(c-a)*Math.PI/180, dG=(d-b)*Math.PI/180;
+    var x=Math.sin(dL/2)*Math.sin(dL/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dG/2)*Math.sin(dG/2);
+    return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
   }
 
-  // ── Price colour ─────────────────────────────────────────────────────────
   function priceColor(p) {
-    if (p <= state.p25) return '#16a34a';
-    if (p >= state.p75) return '#cc0000';
-    return '#d97706';
+    return p<=state.p25 ? '#16a34a' : p>=state.p75 ? '#c8102e' : '#d97706';
   }
   function priceClass(p) {
-    if (p <= state.p25) return 'price-cheap';
-    if (p >= state.p75) return 'price-pricey';
-    return 'price-mid';
+    return p<=state.p25 ? 'c-cheap' : p>=state.p75 ? 'c-pricey' : 'c-mid';
   }
 
-  // ── Format price ─────────────────────────────────────────────────────────
-  function fmt(v) { return v != null ? '$' + v.toFixed(2) : '—'; }
+  function fmt(v) { return v!=null ? '$'+v.toFixed(2) : '—'; }
 
-  // ── Build popup HTML ─────────────────────────────────────────────────────
+  function addrLine(s) {
+    return s.address + (s.suburb ? ', '+s.suburb : '') + (s.postcode ? ' '+s.postcode : '');
+  }
+
   function popupHtml(s) {
-    var ftOrder = ['U91','E10','U95','U98','DL','PDL'];
-    var labels  = {'U91':'ULP 91','E10':'E10','U95':'Prem 95','U98':'Prem 98','DL':'Diesel','PDL':'Prem Diesel'};
-    var rows = ftOrder
-      .filter(function(ft) { return s.prices[ft] != null; })
-      .map(function(ft) {
-        return '<div class="fa-popup-row"><span class="fa-popup-ft">' + labels[ft] + '</span> '
-          + '<span class="fa-popup-val">' + fmt(s.prices[ft]) + '</span></div>';
+    var order=['U91','E10','U95','U98','DL','PDL'];
+    var labels={'U91':'ULP 91','E10':'E10','U95':'Prem 95','U98':'Prem 98','DL':'Diesel','PDL':'Prem Diesel'};
+    var rows = order.filter(function(ft){return s.prices[ft]!=null;})
+      .map(function(ft){
+        return '<div class="fp-row"><span class="fp-ft">'+labels[ft]+'</span><span class="fp-val">'+fmt(s.prices[ft])+'</span></div>';
       }).join('');
-    var addr = s.address + (s.suburb ? ', ' + s.suburb : '') + (s.postcode ? ' ' + s.postcode : '');
-    return '<div class="fa-popup-name">' + s.name + '</div>'
-      + '<div class="fa-popup-addr">' + addr + '</div>'
-      + '<div class="fa-popup-prices">' + rows + '</div>';
+    return '<div class="fp-name">'+s.name+'</div>'
+      +'<div class="fp-addr">'+addrLine(s)+'</div>'
+      +'<div class="fp-grid">'+rows+'</div>';
   }
 
-  // ── Calculate percentiles ────────────────────────────────────────────────
   function calcPercentiles() {
-    var vals = state.stations
-      .map(function(s) { return s.prices[state.fuelType]; })
-      .filter(function(v) { return v != null; })
-      .sort(function(a,b) { return a-b; });
-    state.p25 = vals[Math.floor(vals.length * 0.25)] || 0;
-    state.p75 = vals[Math.floor(vals.length * 0.75)] || 0;
+    var vals = state.stations.map(function(s){return s.prices[state.fuelType];})
+      .filter(function(v){return v!=null;}).sort(function(a,b){return a-b;});
+    state.p25 = vals[Math.floor(vals.length*.25)]||0;
+    state.p75 = vals[Math.floor(vals.length*.75)]||0;
   }
 
-  // ── Render markers ────────────────────────────────────────────────────────
   function renderMarkers() {
     state.cluster.clearLayers();
     state.markerMap = {};
     calcPercentiles();
-
     state.stations.forEach(function(s) {
-      var price = s.prices[state.fuelType];
-      if (price == null || !s.lat || !s.lng) return;
-
-      var color  = priceColor(price);
-      var marker = L.circleMarker([s.lat, s.lng], {
-        radius:      7,
-        fillColor:   color,
-        color:       '#fff',
-        weight:      1.5,
-        fillOpacity: 0.85,
-      }).bindPopup(popupHtml(s), { maxWidth: 220 });
-
-      state.cluster.addLayer(marker);
-      state.markerMap[s.code] = marker;
+      var p = s.prices[state.fuelType];
+      if (p==null||!s.lat||!s.lng) return;
+      var m = L.circleMarker([s.lat,s.lng],{
+        radius:6, fillColor:priceColor(p),
+        color:'#fff', weight:1.5, fillOpacity:.9,
+      }).bindPopup(popupHtml(s),{maxWidth:200});
+      state.cluster.addLayer(m);
+      state.markerMap[s.code]=m;
     });
-
     state.map.addLayer(state.cluster);
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
-  window.faSearch = function () {
-    var query = document.getElementById('fa-input').value.trim();
-    if (!query) return;
-
-    var btn = document.querySelector('#fa-map-root .fa-search button');
-    btn.textContent = 'Searching…';
-    btn.disabled = true;
-
-    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q='
-      + encodeURIComponent(query + ' NSW');
-
-    fetch(url, { headers: { 'Accept-Language': 'en' } })
-      .then(function(r) { return r.json(); })
-      .then(function(results) {
-        btn.textContent = 'Find cheapest';
-        btn.disabled = false;
-
-        if (!results || !results.length) {
-          alert('Suburb or postcode not found in NSW. Try a different spelling.');
-          return;
-        }
-
-        var lat = parseFloat(results[0].lat);
-        var lng = parseFloat(results[0].lon);
-        var label = results[0].display_name.split(',')[0];
-
-        state.map.setView([lat, lng], 13);
-        showResults(lat, lng, label);
+  window.faSearch = function() {
+    var q = document.getElementById('fa-input').value.trim();
+    if (!q) return;
+    var btn = document.querySelector('#fa-root .fa-search button');
+    btn.textContent='Searching…'; btn.disabled=true;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q='+encodeURIComponent(q+' NSW'),
+      {headers:{'Accept-Language':'en'}})
+      .then(function(r){return r.json();})
+      .then(function(res){
+        btn.textContent='Find cheapest'; btn.disabled=false;
+        if (!res||!res.length){alert('Location not found in NSW. Try a different spelling.');return;}
+        var lat=parseFloat(res[0].lat), lng=parseFloat(res[0].lon);
+        var label=res[0].display_name.split(',')[0];
+        state.userLat=lat; state.userLng=lng;
+        state.map.setView([lat,lng],13);
+        showResults(lat,lng,label);
       })
-      .catch(function() {
-        btn.textContent = 'Find cheapest';
-        btn.disabled = false;
-        alert('Search failed. Please try again.');
-      });
+      .catch(function(){btn.textContent='Find cheapest';btn.disabled=false;alert('Search failed. Try again.');});
   };
 
-  // ── Show nearest results list ─────────────────────────────────────────────
-  function showResults(lat, lng, label) {
-    var ft = state.fuelType;
+  function showResults(lat,lng,label) {
+    var ft=state.fuelType;
+    var ftLabels={'U91':'Unleaded 91','E10':'E10','U95':'Premium 95','U98':'Premium 98','DL':'Diesel','PDL':'Premium Diesel'};
     var nearby = state.stations
-      .filter(function(s) { return s.prices[ft] != null && s.lat && s.lng; })
-      .map(function(s) { return Object.assign({}, s, { _dist: dist(lat, lng, s.lat, s.lng) }); })
-      .filter(function(s) { return s._dist <= 20; })
-      .sort(function(a, b) { return a.prices[ft] - b.prices[ft]; })
-      .slice(0, 10);
-
-    var ftLabels = {'U91':'Unleaded 91','E10':'E10','U95':'Premium 95','U98':'Premium 98','DL':'Diesel','PDL':'Premium Diesel'};
+      .filter(function(s){return s.prices[ft]!=null&&s.lat&&s.lng;})
+      .map(function(s){return Object.assign({},s,{_d:dist(lat,lng,s.lat,s.lng)});})
+      .filter(function(s){return s._d<=20;})
+      .sort(function(a,b){return a.prices[ft]-b.prices[ft];})
+      .slice(0,10);
 
     document.getElementById('fa-results-hdr').textContent =
-      'Cheapest ' + (ftLabels[ft] || ft) + ' near ' + label;
+      'Cheapest '+(ftLabels[ft]||ft)+' near '+label;
 
-    var html = nearby.map(function(s, i) {
-      var price = s.prices[ft];
-      var cls   = priceClass(price);
+    var html = nearby.map(function(s,i){
+      var p=s.prices[ft], cls=priceClass(p);
       return '<div class="fa-station">'
-        + '<div class="fa-rank">' + (i+1) + '</div>'
-        + '<div>'
-          + '<div class="fa-station-name">' + s.name + '</div>'
-          + '<div class="fa-station-sub">' + s.address + (s.suburb ? ', ' + s.suburb : '') + '</div>'
-          + '<div class="fa-station-dist">' + s._dist.toFixed(1) + ' km away</div>'
-        + '</div>'
-        + '<div>'
-          + '<div class="fa-price ' + cls + '">' + fmt(price) + '</div>'
-          + '<div class="fa-price-sub">per litre</div>'
-        + '</div>'
-        + '</div>';
+        +'<div class="fa-rank'+(i===0?' fa-rank-1':'')+'">'+( i===0?'#1':'#'+(i+1))+'</div>'
+        +'<div>'
+          +'<div class="fa-sname">'+s.name+'</div>'
+          +'<div class="fa-saddr">'+addrLine(s)+'</div>'
+          +'<div class="fa-sdist">'+s._d.toFixed(1)+' km away</div>'
+        +'</div>'
+        +'<div>'
+          +'<div class="fa-price '+cls+'">'+fmt(p)+'</div>'
+          +'<div class="fa-price-label">per litre</div>'
+        +'</div>'
+        +'</div>';
     }).join('');
 
     if (!nearby.length) {
-      html = '<p style="padding:16px;color:#888;font-size:13px;">No stations with '
-        + (ftLabels[ft] || ft) + ' prices found within 20km.</p>';
+      html='<p style="padding:16px;color:#aaa;font-size:13px;">No stations found within 20km selling '+(ftLabels[ft]||ft)+'.</p>';
     }
-
-    document.getElementById('fa-results-list').innerHTML = html;
-    document.getElementById('fa-results').style.display = 'block';
-
-    // Scroll results into view
-    document.getElementById('fa-results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.getElementById('fa-results-list').innerHTML=html;
+    document.getElementById('fa-results').style.display='block';
+    document.getElementById('fa-results').scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 
-  // ── Fuel type tabs ────────────────────────────────────────────────────────
-  document.getElementById('fa-tabs').addEventListener('click', function(e) {
-    var tab = e.target.closest('.fa-tab');
+  document.getElementById('fa-tabs').addEventListener('click',function(e){
+    var tab=e.target.closest('.fa-tab');
     if (!tab) return;
-    document.querySelectorAll('#fa-map-root .fa-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('#fa-root .fa-tab').forEach(function(t){t.classList.remove('active');});
     tab.classList.add('active');
-    state.fuelType = tab.dataset.ft;
+    state.fuelType=tab.dataset.ft;
     renderMarkers();
-
-    // Re-run search if results are showing
-    var input = document.getElementById('fa-input').value.trim();
-    if (input && document.getElementById('fa-results').style.display !== 'none') {
-      window.faSearch();
-    }
+    var inp=document.getElementById('fa-input').value.trim();
+    if (inp&&document.getElementById('fa-results').style.display!=='none') window.faSearch();
   });
 
-  // ── Enter key on search input ─────────────────────────────────────────────
-  document.getElementById('fa-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') window.faSearch();
+  document.getElementById('fa-input').addEventListener('keydown',function(e){
+    if (e.key==='Enter') window.faSearch();
   });
 
-  // ── Init map ──────────────────────────────────────────────────────────────
   function initMap() {
-    state.map = L.map('fa-map', { zoomControl: true }).setView([-32.5, 147.0], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    state.map = L.map('fa-map',{zoomControl:true}).setView([-32.5,147.0],6);
+    // CartoDB Positron — clean, minimal, premium look
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+      maxZoom:19,
+      attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
     }).addTo(state.map);
-    state.cluster = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 40 });
+    state.cluster = L.markerClusterGroup({chunkedLoading:true,maxClusterRadius:35});
   }
 
-  // ── Timestamp ─────────────────────────────────────────────────────────────
   function setTimestamp(iso) {
     try {
-      var d = new Date(iso);
+      var d=new Date(iso);
       document.getElementById('fa-updated').textContent =
-        'Last updated: ' +
-        d.toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit', timeZone:'Australia/Sydney' }) +
-        ' AEST, ' +
-        d.toLocaleDateString('en-AU', { day:'numeric', month:'long', year:'numeric', timeZone:'Australia/Sydney' });
-    } catch(e) {}
+        'Updated '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',timeZone:'Australia/Sydney'})+
+        ' AEST · '+d.toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric',timeZone:'Australia/Sydney'});
+    } catch(e){}
   }
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
   initMap();
-  document.getElementById('fa-updated').textContent = 'Loading station data…';
-
-  fetch(DATA_URL + '?_=' + Date.now())
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(function(data) {
-      state.stations = data.stations || [];
+  fetch(DATA_URL+'?_='+Date.now())
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(function(data){
+      state.stations=data.stations||[];
       setTimestamp(data.updated_at);
       renderMarkers();
     })
-    .catch(function(err) {
-      console.error('Fuel tracker load error:', err);
-      document.getElementById('fa-updated').textContent = 'Could not load data — try refreshing';
-      document.getElementById('fa-map').innerHTML =
-        '<div class="fa-error">Station data could not be loaded. Please refresh the page.</div>';
+    .catch(function(err){
+      console.error(err);
+      document.getElementById('fa-updated').textContent='Could not load data — please refresh';
+      document.getElementById('fa-map').innerHTML='<div style="padding:40px;text-align:center;color:#aaa;font-size:13px;">Station data unavailable. Please refresh.</div>';
     });
 
 })();
