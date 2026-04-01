@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sydney Fuel Price Finder</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{background:#fff;overflow-x:hidden}
+
+.fa-header{border-top:3px solid #c8102e;padding:20px 0 0 0;margin-bottom:24px}
+.fa-live-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.fa-dot{width:9px;height:9px;border-radius:50%;background:#c8102e;animation:blink 1.4s ease-in-out infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+.fa-live-lbl{font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#c8102e}
+.fa-title{font-size:28px;font-weight:800;letter-spacing:-.03em;line-height:1.1;color:#111;margin-bottom:8px}
+.fa-updated{font-size:12px;color:#999;display:block;margin-bottom:20px}
+
+.fa-search{display:flex;gap:8px;margin-bottom:12px}
+.fa-si{flex:1;padding:12px 16px;font-size:14px;border:2px solid #ddd;border-radius:8px;outline:none;color:#111;background:#fff}
+.fa-si:focus{border-color:#111}
+.fa-si::placeholder{color:#ccc}
+.fa-sb{padding:12px 20px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;background:#111;color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.fa-sb:hover{background:#c8102e}
+.fa-sb:disabled{background:#aaa;cursor:default}
+
+.fa-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.fa-pill{padding:7px 16px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:2px solid #ddd;border-radius:24px;background:#fff;color:#999;cursor:pointer;white-space:nowrap}
+.fa-pill:hover{border-color:#888;color:#333}
+.fa-pill.active{background:#111;border-color:#111;color:#fff}
+
+.fa-body{display:grid;grid-template-columns:1fr 290px;border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.09);margin-bottom:24px}
+#fa-map{width:100%;height:460px;display:block}
+.fa-panel{height:460px;overflow-y:auto;border-left:1px solid #eee;background:#fff}
+.fa-panel-hdr{position:sticky;top:0;background:#fff;z-index:1;padding:14px 16px 12px;border-bottom:2px solid #111}
+.fa-panel-label{font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#aaa;display:block;margin-bottom:4px}
+.fa-panel-ft{font-size:14px;font-weight:800;color:#c8102e;display:block}
+.fa-srow{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer}
+.fa-srow:hover{background:#fafafa}
+.fa-srank{font-size:11px;font-weight:800;color:#ccc;min-width:20px}
+.fa-srank-1{color:#c8102e}
+.fa-badge{border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
+.fa-sinfo{flex:1;min-width:0}
+.fa-sname{font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#111;margin-bottom:1px}
+.fa-saddr{font-size:9px;color:#bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fa-sprice{font-size:15px;font-weight:800;white-space:nowrap}
+.c-cheap{color:#16a34a}.c-mid{color:#d97706}.c-pricey{color:#c8102e}
+
+.fa-results{margin-bottom:24px}
+.fa-rh{font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;padding-bottom:12px;border-bottom:2px solid #111;color:#111;margin-bottom:0}
+.fa-station{display:grid;grid-template-columns:26px 42px 1fr auto;align-items:center;gap:0 12px;padding:14px 0;border-bottom:1px solid #f0f0f0;cursor:pointer}
+.fa-station:hover{background:#fafafa}
+.fa-rank{font-size:12px;font-weight:800;color:#ccc}
+.fa-rank-1{color:#c8102e}
+.fa-price{font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.fa-punit{font-size:10px;color:#bbb;margin-top:3px}
+
+.fa-mm{background:#fff;border-radius:6px;padding:3px 7px 3px 5px;display:flex;align-items:center;gap:4px;box-shadow:0 2px 10px rgba(0,0,0,.28);font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}
+.fa-mm-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.fa-cl{background:rgba(17,17,17,.88);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.fp{min-width:180px}
+.fp-top{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.fp-pb{width:34px;height:34px;border-radius:7px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.fp-pb img{width:100%;height:100%;object-fit:contain}
+.fp-name{font-weight:800;font-size:13px;line-height:1.3;margin:0}
+.fp-brand{font-size:10px;color:#aaa;margin:0}
+.fp-addr{font-size:10px;color:#aaa;margin:0 0 9px;line-height:1.5}
+.fp-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+.fp-row{font-size:11px;display:flex;justify-content:space-between;gap:6px}
+.fp-ft{color:#bbb}.fp-val{font-weight:800}
+
+.fa-footer{font-size:10px;color:#ccc;line-height:2;border-top:1px solid #eee;padding-top:10px}
+.fa-footer a{color:#ccc}
+
+#wrap{max-width:960px;margin:0 auto;padding:16px}
+
+@media(max-width:600px){
+  .fa-body{grid-template-columns:1fr}
+  .fa-panel{height:260px;border-left:none;border-top:1px solid #eee}
+  .fa-title{font-size:22px}
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+
+<div class="fa-header">
+  <div class="fa-live-row"><span class="fa-dot"></span><span class="fa-live-lbl">Live</span></div>
+  <div class="fa-title">Sydney Fuel Price Finder</div>
+  <span class="fa-updated" id="fa-updated">Loading…</span>
+</div>
+
+<div class="fa-search">
+  <input type="text" id="fa-input" class="fa-si" placeholder="Enter suburb or postcode…" autocomplete="off"/>
+  <button class="fa-sb" id="fa-btn" onclick="faSearch()">Find cheapest</button>
+</div>
+
+<div class="fa-pills" id="fa-pills">
+  <button class="fa-pill active" data-ft="U91">Unleaded 91</button>
+  <button class="fa-pill" data-ft="E10">E10</button>
+  <button class="fa-pill" data-ft="DL">Diesel</button>
+  <button class="fa-pill" data-ft="U95">Premium 95</button>
+  <button class="fa-pill" data-ft="U98">Premium 98</button>
+</div>
+
+<div class="fa-body">
+  <div id="fa-map"></div>
+  <div class="fa-panel">
+    <div class="fa-panel-hdr">
+      <span class="fa-panel-label">Sydney Top 10 Cheapest</span>
+      <span class="fa-panel-ft" id="fa-sidebar-ft">Unleaded 91</span>
+    </div>
+    <div id="fa-top10"><div style="padding:16px;color:#ccc;font-size:12px">Loading…</div></div>
+  </div>
+</div>
+
+<div id="fa-results" style="display:none" class="fa-results">
+  <p class="fa-rh" id="fa-rh"></p>
+  <div id="fa-rlist"></div>
+</div>
+
+<div class="fa-footer">
+  Data: <a href="https://api.nsw.gov.au/Product/Index/22" target="_blank">FuelCheck NSW</a> ·
+  <a href="https://www.accc.gov.au" target="_blank">ACCC</a> ·
+  Map © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>, © <a href="https://carto.com/" target="_blank">CARTO</a>
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.min.js"></script>
+<script>
+(function(){
+  var DATA_URL='https://raw.githubusercontent.com/SamHuss91/Fuel-Tracker/main/data/stations-nsw.json';
+
+  function svg(content,bg){
+    return 'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60"><rect width="60" height="60" rx="8" fill="'+bg+'"/>'+content+'</svg>');
+  }
+  var LOGOS={
+    'BP':svg('<circle cx="30" cy="30" r="22" fill="#fff" opacity=".15"/><text x="30" y="38" font-family="Arial Black,sans-serif" font-size="22" font-weight="900" fill="#fff" text-anchor="middle">bp</text>','#00843D'),
+    'Shell':svg('<text x="30" y="22" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#FCD000" text-anchor="middle">SHELL</text><text x="30" y="42" font-family="Arial Black,sans-serif" font-size="28" font-weight="900" fill="#FCD000" text-anchor="middle">S</text>','#DD1D21'),
+    'Ampol':svg('<text x="30" y="26" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#fff" text-anchor="middle">AMPOL</text><rect x="8" y="30" width="44" height="3" fill="#fff" opacity=".4"/><text x="30" y="48" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="#fff" opacity=".8" text-anchor="middle">AUSTRALIA</text>','#E31837'),
+    'Caltex':svg('<text x="30" y="26" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#fff" text-anchor="middle">CALTEX</text><text x="30" y="45" font-family="Arial Black,sans-serif" font-size="20" font-weight="900" fill="#FCD000" text-anchor="middle">★</text>','#E31837'),
+    '7-Eleven':svg('<text x="30" y="34" font-family="Arial Black,sans-serif" font-size="30" font-weight="900" fill="#fff" text-anchor="middle">7</text><text x="30" y="50" font-family="Arial,sans-serif" font-size="10" font-weight="800" fill="#fff" opacity=".8" text-anchor="middle">ELEVEN</text>','#007A3D'),
+    'Coles':svg('<text x="30" y="38" font-family="Arial Black,sans-serif" font-size="14" font-weight="900" fill="#fff" text-anchor="middle">COLES</text>','#E2001A'),
+    'United':svg('<text x="30" y="38" font-family="Arial Black,sans-serif" font-size="11" font-weight="900" fill="#111" text-anchor="middle">UNITED</text>','#F5A800'),
+    'Puma':svg('<text x="30" y="38" font-family="Arial Black,sans-serif" font-size="16" font-weight="900" fill="#fff" text-anchor="middle">PUMA</text>','#FF6200'),
+    'Liberty':svg('<text x="30" y="38" font-family="Arial Black,sans-serif" font-size="11" font-weight="900" fill="#fff" text-anchor="middle">LIBERTY</text>','#003087'),
+    'Mobil':svg('<text x="30" y="38" font-family="Arial Black,sans-serif" font-size="14" font-weight="900" fill="#fff" text-anchor="middle">MOBIL</text>','#C41E3A'),
+    'Woolworths':svg('<text x="30" y="28" font-family="Arial,sans-serif" font-size="9" font-weight="800" fill="#fff" text-anchor="middle">WOOLWORTHS</text><text x="30" y="46" font-family="Arial Black,sans-serif" font-size="18" font-weight="900" fill="#fff" text-anchor="middle">W</text>','#00853E'),
+    'Costco':svg('<text x="30" y="38" font-family="Arial Black,sans-serif" font-size="12" font-weight="900" fill="#fff" text-anchor="middle">COSTCO</text>','#005DAA'),
+  };
+  var BRANDS={
+    'BP':{c:'#00843D'},'Shell':{c:'#DD1D21'},'Ampol':{c:'#E31837'},'Caltex':{c:'#E31837'},
+    '7-Eleven':{c:'#007A3D'},'Coles':{c:'#E2001A'},'United':{c:'#E8A000'},'Puma':{c:'#FF6200'},
+    'Liberty':{c:'#003087'},'Mobil':{c:'#C41E3A'},'Metro':{c:'#1B3D6F'},'Metco':{c:'#1B3D6F'},
+    'OTR':{c:'#0047AB'},'Woolworths':{c:'#00853E'},'Everyday':{c:'#00853E'},'Costco':{c:'#005DAA'},
+    'Speedway':{c:'#C41E3A'},'Vibe':{c:'#E31837'},'Pearl':{c:'#1B3D6F'},'Astron':{c:'#003087'},
+    'Arko':{c:'#333'},'Enhance':{c:'#1B6F3D'},'Infinity':{c:'#6B21A8'},'Newo':{c:'#FF6200'},
+  };
+
+  function getBrand(b){
+    if(!b)return null;var t=b.trim();
+    if(BRANDS[t])return Object.assign({key:t},BRANDS[t]);
+    for(var k in BRANDS){if(t.toLowerCase().indexOf(k.toLowerCase())!==-1)return Object.assign({key:k},BRANDS[k]);}
+    return null;
+  }
+  function brandColor(b){var x=getBrand(b);return x?x.c:'#555';}
+  function brandInitials(b){if(!b)return '?';var w=b.trim().split(/\s+/);return(w.length>=2?w[0][0]+w[1][0]:b.slice(0,2)).toUpperCase();}
+  function brandLogoUrl(b){
+    if(!b)return'';var t=b.trim();
+    if(LOGOS[t])return LOGOS[t];
+    for(var k in LOGOS){if(t.toLowerCase().indexOf(k.toLowerCase())!==-1)return LOGOS[k];}
+    return'';
+  }
+  function badgeEl(brand,size){
+    var s=size||36,url=brandLogoUrl(brand),color=brandColor(brand),initials=brandInitials(brand);
+    var d=document.createElement('div');
+    d.className='fa-badge';
+    d.style.cssText='width:'+s+'px;height:'+s+'px;background:'+color+';border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden';
+    if(url){
+      var img=document.createElement('img');img.src=url;img.alt=brand;
+      img.style.cssText='width:100%;height:100%;object-fit:contain;border-radius:6px;display:block';
+      img.onerror=function(){this.style.display='none';var sp=document.createElement('span');sp.style.cssText='font-size:9px;font-weight:900;color:#fff;text-align:center';sp.textContent=initials;d.appendChild(sp);};
+      d.appendChild(img);
+    }else{
+      var sp=document.createElement('span');sp.style.cssText='font-size:9px;font-weight:900;color:#fff;text-align:center';sp.textContent=initials;d.appendChild(sp);
+    }
+    return d;
+  }
+
+  var FT_LABELS={U91:'Unleaded 91',E10:'E10',DL:'Diesel',U95:'Premium 95',U98:'Premium 98',PDL:'Prem Diesel'};
+  var FT_POPUP={U91:'ULP 91',E10:'E10',DL:'Diesel',U95:'Prem 95',U98:'Prem 98',PDL:'Prem Diesel'};
+  var state={stations:[],fuelType:'U91',map:null,cluster:null,p25:0,p75:0,markerMap:{}};
+  var SYD={minLat:-34.3,maxLat:-33.3,minLng:150.3,maxLng:151.6};
+
+  function inSydney(s){return s.lat>=SYD.minLat&&s.lat<=SYD.maxLat&&s.lng>=SYD.minLng&&s.lng<=SYD.maxLng;}
+  function dist(a,b,c,d){var R=6371,dL=(c-a)*Math.PI/180,dG=(d-b)*Math.PI/180,x=Math.sin(dL/2)*Math.sin(dL/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dG/2)*Math.sin(dG/2);return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+  function priceColor(p){return p<=state.p25?'#16a34a':p>=state.p75?'#c8102e':'#d97706';}
+  function priceClass(p){return p<=state.p25?'c-cheap':p>=state.p75?'c-pricey':'c-mid';}
+  function fmt(v){return v!=null?'$'+v.toFixed(2):'—';}
+  function addrLine(s){return s.address+(s.suburb?', '+s.suburb:'')+(s.postcode?' '+s.postcode:'');}
+
+  function popupHtml(s){
+    var c=brandColor(s.brand),i=brandInitials(s.brand),url=brandLogoUrl(s.brand);
+    var logoHtml=url?'<img src="'+url+'" style="width:32px;height:32px;object-fit:contain;border-radius:6px">'
+      :'<div style="width:32px;height:32px;border-radius:6px;background:'+c+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:#fff">'+i+'</div>';
+    var rows=['U91','E10','U95','U98','DL','PDL'].filter(function(ft){return s.prices[ft]!=null;})
+      .map(function(ft){return'<div class="fp-row"><span class="fp-ft">'+FT_POPUP[ft]+'</span><span class="fp-val">'+fmt(s.prices[ft])+'</span></div>';}).join('');
+    return'<div class="fp"><div class="fp-top"><div class="fp-pb">'+logoHtml+'</div>'
+      +'<div><div class="fp-name">'+s.name+'</div><div class="fp-brand">'+s.brand+'</div></div></div>'
+      +'<div class="fp-addr">'+addrLine(s)+'</div><div class="fp-grid">'+rows+'</div></div>';
+  }
+
+  function calcPercentiles(){
+    var vals=state.stations.map(function(s){return s.prices[state.fuelType];}).filter(function(v){return v!=null;}).sort(function(a,b){return a-b;});
+    state.p25=vals[Math.floor(vals.length*.25)]||0;
+    state.p75=vals[Math.floor(vals.length*.75)]||0;
+  }
+
+  function makePriceMarker(price,pc,bc){
+    var w=74,h=26;
+    var html='<div class="fa-mm" style="border:2px solid '+pc+'">'
+      +'<div class="fa-mm-dot" style="background:'+bc+'"></div>'
+      +'<span style="color:'+pc+'">'+fmt(price)+'</span></div>'
+      +'<div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid '+pc+';margin:0 auto"></div>';
+    return L.divIcon({html:html,className:'',iconSize:[w,h+6],iconAnchor:[w/2,h+6],popupAnchor:[0,-(h+6)]});
+  }
+
+  function renderMarkers(){
+    state.cluster.clearLayers();state.markerMap={};calcPercentiles();
+    state.stations.forEach(function(s){
+      var p=s.prices[state.fuelType];
+      if(p==null||!s.lat||!s.lng)return;
+      var m=L.marker([s.lat,s.lng],{icon:makePriceMarker(p,priceColor(p),brandColor(s.brand))}).bindPopup(popupHtml(s),{maxWidth:230});
+      state.cluster.addLayer(m);state.markerMap[s.code]=m;
+    });
+    state.map.addLayer(state.cluster);
+  }
+
+  function renderTop10(){
+    var ft=state.fuelType;
+    document.getElementById('fa-sidebar-ft').textContent=FT_LABELS[ft]||ft;
+    var pool=state.stations.filter(inSydney);
+    if(!pool.length)pool=state.stations;
+    var top=pool.filter(function(s){return s.prices[ft]!=null&&s.lat&&s.lng;}).sort(function(a,b){return a.prices[ft]-b.prices[ft];}).slice(0,10);
+    var container=document.getElementById('fa-top10');container.innerHTML='';
+    top.forEach(function(s,i){
+      var p=s.prices[ft],cls=priceClass(p);
+      var row=document.createElement('div');row.className='fa-srow';
+      var rank=document.createElement('div');rank.className='fa-srank'+(i===0?' fa-srank-1':'');rank.textContent='#'+(i+1);
+      var info=document.createElement('div');info.className='fa-sinfo';
+      info.innerHTML='<div class="fa-sname">'+s.name+'</div><div class="fa-saddr">'+addrLine(s)+'</div>';
+      var price=document.createElement('div');price.className='fa-sprice '+cls;price.textContent=fmt(p);
+      row.appendChild(rank);row.appendChild(badgeEl(s.brand,32));row.appendChild(info);row.appendChild(price);
+      row.addEventListener('click',(function(st){return function(){
+        var m=state.markerMap[st.code];if(!m)return;
+        state.cluster.zoomToShowLayer(m,function(){m.openPopup();});
+      };})(s));
+      container.appendChild(row);
+    });
+    if(!top.length)container.innerHTML='<div style="padding:16px;color:#ccc;font-size:12px">No data.</div>';
+  }
+
+  window.faSearch=function(){
+    var q=document.getElementById('fa-input').value.trim();if(!q)return;
+    var btn=document.getElementById('fa-btn');btn.textContent='Searching…';btn.disabled=true;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q='+encodeURIComponent(q+' NSW'),{headers:{'Accept-Language':'en'}})
+      .then(function(r){return r.json();})
+      .then(function(res){
+        btn.textContent='Find cheapest';btn.disabled=false;
+        if(!res||!res.length){alert('Location not found.');return;}
+        var lat=parseFloat(res[0].lat),lng=parseFloat(res[0].lon),label=res[0].display_name.split(',')[0];
+        state.map.setView([lat,lng],14);showResults(lat,lng,label);
+      })
+      .catch(function(){btn.textContent='Find cheapest';btn.disabled=false;alert('Search failed — please try again.');});
+  };
+
+  function showResults(lat,lng,label){
+    var ft=state.fuelType;
+    var withDist=state.stations.filter(function(s){return s.prices[ft]!=null&&s.lat&&s.lng;})
+      .map(function(s){return Object.assign({},s,{_d:dist(lat,lng,s.lat,s.lng)});}).sort(function(a,b){return a._d-b._d;});
+    var nearby=withDist.filter(function(s){return s._d<=30;});
+    var usedFallback=nearby.length<5;
+    if(usedFallback)nearby=withDist.slice(0,15);
+    nearby=nearby.sort(function(a,b){return a.prices[ft]-b.prices[ft];}).slice(0,10);
+    var rh=document.getElementById('fa-rh');
+    rh.innerHTML='Cheapest '+(FT_LABELS[ft]||ft)+' near '+label.toUpperCase()
+      +(usedFallback?'<div style="font-size:11px;font-weight:400;color:#999;margin-top:3px;text-transform:none;letter-spacing:0">Limited coverage here — showing nearest available stations</div>':'');
+    var list=document.getElementById('fa-rlist');list.innerHTML='';
+    nearby.forEach(function(s,i){
+      var p=s.prices[ft],cls=priceClass(p);
+      var row=document.createElement('div');row.className='fa-station';
+      var rank=document.createElement('div');rank.className='fa-rank'+(i===0?' fa-rank-1':'');rank.textContent='#'+(i+1);
+      var info=document.createElement('div');
+      info.innerHTML='<div style="font-size:14px;font-weight:800;margin-bottom:2px;color:#111">'+s.name+'</div>'
+        +'<div style="font-size:10px;color:#999;margin-bottom:2px">'+addrLine(s).toUpperCase()+'</div>'
+        +'<div style="font-size:10px;color:#bbb">'+s._d.toFixed(1)+' km away</div>';
+      var pc=document.createElement('div');pc.style.textAlign='right';
+      pc.innerHTML='<div class="fa-price '+cls+'">'+fmt(p)+'</div><div class="fa-punit">per litre</div>';
+      row.appendChild(rank);row.appendChild(badgeEl(s.brand,40));row.appendChild(info);row.appendChild(pc);
+      row.addEventListener('click',(function(st){return function(){
+        var m=state.markerMap[st.code];if(!m)return;
+        state.cluster.zoomToShowLayer(m,function(){m.openPopup();});
+      };})(s));
+      list.appendChild(row);
+    });
+    if(!nearby.length)list.innerHTML='<div style="padding:16px;color:#aaa;font-size:12px">No data available. Try again after the next update.</div>';
+    document.getElementById('fa-results').style.display='block';
+  }
+
+  document.getElementById('fa-pills').addEventListener('click',function(e){
+    var pill=e.target.closest('.fa-pill');if(!pill)return;
+    document.querySelectorAll('.fa-pill').forEach(function(p){p.classList.remove('active');});
+    pill.classList.add('active');state.fuelType=pill.dataset.ft;
+    renderMarkers();renderTop10();
+    if(document.getElementById('fa-input').value.trim()&&document.getElementById('fa-results').style.display!=='none')window.faSearch();
+  });
+  document.getElementById('fa-input').addEventListener('keydown',function(e){if(e.key==='Enter')window.faSearch();});
+
+  state.map=L.map('fa-map',{zoomControl:true}).setView([-33.87,151.18],10);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>'
+  }).addTo(state.map);
+  state.cluster=L.markerClusterGroup({
+    chunkedLoading:true,maxClusterRadius:50,disableClusteringAtZoom:15,
+    iconCreateFunction:function(c){var n=c.getChildCount(),sz=n<10?30:n<100?35:40;return L.divIcon({html:'<div class="fa-cl" style="width:'+sz+'px;height:'+sz+'px">'+n+'</div>',className:'',iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});}
+  });
+
+  fetch(DATA_URL+'?_='+Date.now())
+    .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+    .then(function(data){
+      state.stations=data.stations||[];
+      try{var d=new Date(data.updated_at);
+        document.getElementById('fa-updated').textContent='Updated '+d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit',timeZone:'Australia/Sydney'})+' AEST · '+d.toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric',timeZone:'Australia/Sydney'});
+      }catch(e){}
+      renderMarkers();renderTop10();
+    })
+    .catch(function(err){
+      console.error(err);
+      document.getElementById('fa-updated').textContent='Could not load data — please refresh';
+    });
+})();
+</script>
+</body>
+</html>
