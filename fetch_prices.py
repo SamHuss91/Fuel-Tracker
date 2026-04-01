@@ -55,11 +55,10 @@ AUTH_STYLES = [
 
 # Try multiple possible base URL patterns used by API.NSW
 CANDIDATE_BASES = [
+    "https://api.onegov.nsw.gov.au/fuelpricecheck/v1/fuel",
+    "https://api.onegov.nsw.gov.au/fuelpricecheck/v2/fuel",
     "https://api.onegov.nsw.gov.au/FuelCheckApp/v1/fuel",
     "https://api.onegov.nsw.gov.au/FuelCheckApp/v2/fuel",
-    "https://api.onegov.nsw.gov.au/FuelCheck/v1/fuel",
-    "https://api.onegov.nsw.gov.au/FuelPrices/v1/fuel",
-    "https://api.onegov.nsw.gov.au/fuelcheck/v1/fuel",
 ]
 
 PRICE_ENDPOINTS    = ["prices", "GetAllPrices", "getAllPrices", "getallprices"]
