@@ -295,13 +295,31 @@ def main():
             print("First station sample:", json.dumps(raw_stations[0], indent=2)[:500], file=sys.stderr)
         sys.exit(1)
 
-    # stations-nsw.json
+    # stations-nsw.json  — accumulate across runs so station count grows over time
+    existing = {}
+    if os.path.exists(STATIONS_FILE):
+        try:
+            with open(STATIONS_FILE) as f:
+                old = json.load(f)
+            for s in old.get("stations", []):
+                existing[s["code"]] = s
+            print(f"  Loaded {len(existing)} existing stations from disk")
+        except Exception as e:
+            print(f"  Could not load existing stations: {e}")
+
+    # Merge: new API data overwrites prices for known stations; adds new ones
+    for s in stations:
+        existing[s["code"]] = s
+
+    merged_stations = list(existing.values())
+    print(f"  Combined: {len(merged_stations)} stations total ({len(stations)} from this run)")
+
     stations_out = {
         "updated_at":    now.isoformat(),
-        "station_count": len(stations),
+        "station_count": len(merged_stations),
         "fuel_types":    list(FUEL_LABELS.keys()),
         "fuel_labels":   FUEL_LABELS,
-        "stations":      stations,
+        "stations":      merged_stations,
     }
     with open(STATIONS_FILE, "w") as f:
         json.dump(stations_out, f, separators=(",", ":"))
