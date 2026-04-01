@@ -20,18 +20,33 @@
   #fa-fuel-tracker * { box-sizing: border-box; margin: 0; padding: 0; }
   #fa-fuel-tracker { font-family: var(--fa-font); color: #111; line-height: 1.5; }
 
-  /* ── Crisis banner ── */
-  #fa-fuel-tracker .fa-banner {
-    background: var(--fa-accent); color: #fff;
-    padding: 10px 14px; font-size: 13px; font-weight: 600;
-    display: flex; align-items: flex-start; gap: 10px;
-    margin-bottom: 20px;
+  /* ── Header bar ── */
+  #fa-fuel-tracker .fa-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+    border-bottom: 3px solid #111; padding-bottom: 12px; margin-bottom: 20px;
   }
-  #fa-fuel-tracker .fa-banner-label {
-    background: #fff; color: var(--fa-accent);
-    font-size: 10px; font-weight: 800; letter-spacing: .06em;
-    text-transform: uppercase; padding: 2px 6px; border-radius: 2px;
-    white-space: nowrap; margin-top: 1px;
+  #fa-fuel-tracker .fa-header-left {
+    display: flex; align-items: center; gap: 10px;
+  }
+  #fa-fuel-tracker .fa-live-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--fa-accent); flex-shrink: 0;
+    animation: fa-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes fa-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.3; transform: scale(0.85); }
+  }
+  #fa-fuel-tracker .fa-live-label {
+    font-size: 11px; font-weight: 800; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--fa-accent);
+  }
+  #fa-fuel-tracker .fa-header-title {
+    font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: #111;
+  }
+  #fa-fuel-tracker .fa-header-updated {
+    font-size: 11px; color: #888; white-space: nowrap;
   }
 
   /* ── Section label ── */
@@ -108,10 +123,14 @@
   #fa-fuel-tracker .fa-footer a { color: #999; }
 </style>
 
-  <!-- Crisis banner -->
-  <div class="fa-banner">
-    <span class="fa-banner-label">Live</span>
-    Iran's Strait of Hormuz blockade has triggered Australia's worst fuel supply crisis on record. 600+ stations ran dry. Government halved the excise from 1 April 2026.
+  <!-- Header -->
+  <div class="fa-header">
+    <div class="fa-header-left">
+      <span class="fa-live-dot"></span>
+      <span class="fa-live-label">Live</span>
+      <span class="fa-header-title">Fuel Price Check</span>
+    </div>
+    <span class="fa-header-updated" id="fa-updated">Last updated: 5:00am AEST, 1 April 2026</span>
   </div>
 
   <!-- Stat strip -->
@@ -122,11 +141,11 @@
       <div class="fa-stat-sub">Excise cut per litre<br><em>Effective 1 Apr 2026</em></div>
     </div>
     <div class="fa-stat">
-      <div class="fa-stat-value red" id="fa-nat-ulp">252.0c</div>
+      <div class="fa-stat-value red" id="fa-nat-ulp">$2.52</div>
       <div class="fa-stat-sub">National avg ULP 91<br><em>ACCC, week to 29 Mar</em></div>
     </div>
     <div class="fa-stat">
-      <div class="fa-stat-value red" id="fa-nat-diesel">303.5c</div>
+      <div class="fa-stat-value red" id="fa-nat-diesel">$3.04</div>
       <div class="fa-stat-sub">National avg Diesel<br><em>ACCC, week to 29 Mar</em></div>
     </div>
     <div class="fa-stat">
@@ -184,14 +203,14 @@
 
   var CITIES = ['Sydney','Melbourne','Brisbane','Perth','Adelaide','Canberra','Darwin','Hobart'];
 
-  function cpl(v) { return v != null ? v.toFixed(1) + 'c' : '—'; }
+  function cpl(v) { return v != null ? '$' + (v / 100).toFixed(2) : '—'; }
 
   function render(data) {
     // Stat strip
     if (data.national_averages) {
       var na = data.national_averages;
-      if (na.ulp_cpl)    document.getElementById('fa-nat-ulp').textContent    = cpl(na.ulp_cpl);
-      if (na.diesel_cpl) document.getElementById('fa-nat-diesel').textContent = cpl(na.diesel_cpl);
+      if (na.ulp_cpl)    document.getElementById('fa-nat-ulp').textContent    = '$' + (na.ulp_cpl / 100).toFixed(2);
+      if (na.diesel_cpl) document.getElementById('fa-nat-diesel').textContent = '$' + (na.diesel_cpl / 100).toFixed(2);
     }
     if (data.reserves) {
       document.getElementById('fa-reserves-petrol').textContent = data.reserves.petrol_days;
@@ -230,7 +249,8 @@
       try {
         var d = new Date(data.updated_at);
         document.getElementById('fa-updated').textContent =
-          'Last updated: ' + d.toLocaleString('en-AU', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
+          'Last updated: ' + d.toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit', timeZone:'Australia/Sydney' }) +
+          ' AEST, ' + d.toLocaleDateString('en-AU', { day:'numeric', month:'long', year:'numeric', timeZone:'Australia/Sydney' });
       } catch(e) {}
     }
   }
