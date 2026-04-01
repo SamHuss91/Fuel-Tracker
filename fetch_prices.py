@@ -38,16 +38,24 @@ EXCISE_AFTER_CPL  = 26.3
 # API.NSW FuelCheck uses the apikey header for GET requests.
 # We try three auth styles in order and use whichever works.
 
-import base64
+import base64, uuid
 _BASIC = base64.b64encode(f"{API_KEY}:{API_SECRET}".encode()).decode() if (API_KEY and API_SECRET) else ""
 
+def _base_headers():
+    """NSW Government APIs typically require transactionid + requesttimestamp."""
+    now = datetime.now(timezone(timedelta(hours=10)))
+    return {
+        "apikey":           API_KEY,
+        "transactionid":    str(uuid.uuid4()),
+        "requesttimestamp": now.strftime("%d/%m/%Y %I:%M:%S %p"),
+        "Accept":           "application/json",
+    }
+
 AUTH_STYLES = [
-    # Style 1: apikey header only (most common for API.NSW)
-    {"apikey": API_KEY, "Accept": "application/json"},
-    # Style 2: apikey + Basic auth
-    {"apikey": API_KEY, "Authorization": f"Basic {_BASIC}", "Accept": "application/json"},
-    # Style 3: Authorization header only
-    {"Authorization": f"Basic {_BASIC}", "Accept": "application/json"},
+    # Style 1: apikey + required NSW headers (no Authorization)
+    lambda: _base_headers(),
+    # Style 2: add Basic auth on top
+    lambda: {**_base_headers(), "Authorization": f"Basic {_BASIC}"},
 ]
 
 
@@ -68,8 +76,9 @@ REFERENCE_ENDPOINTS = ["GetReferenceData", "getReferenceData", "getreferencedata
 
 def try_get(url):
     """Try a GET request with each auth style. Returns (response, style_used) or (None, None)."""
-    for i, headers in enumerate(AUTH_STYLES):
+    for i, style in enumerate(AUTH_STYLES):
         try:
+            headers = style() if callable(style) else style
             r = requests.get(url, headers=headers, timeout=20)
             print(f"    [{i+1}] {r.status_code} → {url}")
             if r.status_code == 200:
