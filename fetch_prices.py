@@ -36,15 +36,39 @@ EXCISE_AFTER_CPL  = 26.3
 
 # ─── AUTH ─────────────────────────────────────────────────────────────────────
 
-def auth_headers():
+def get_access_token():
+    """
+    API.NSW uses OAuth2 client credentials.
+    Step 1: exchange API key + secret for a Bearer access token.
+    """
     import base64
-    token = base64.b64encode(f"{API_KEY}:{API_SECRET}".encode()).decode()
-    return {
-        "Authorization": f"Basic {token}",
+    basic = base64.b64encode(f"{API_KEY}:{API_SECRET}".encode()).decode()
+    token_url = "https://api.onegov.nsw.gov.au/oauth/client_credential/accesstoken"
+    resp = requests.post(
+        token_url,
+        params={"grant_type": "client_credentials"},
+        headers={
+            "Authorization": f"Basic {basic}",
+            "Content-Type":  "application/x-www-form-urlencoded",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    token = resp.json().get("access_token")
+    if not token:
+        raise ValueError(f"No access_token in response: {resp.text[:200]}")
+    print(f"  ✓ Access token obtained")
+    return token
+
+def auth_headers(access_token=None):
+    headers = {
         "apikey":        API_KEY,
         "Content-Type":  "application/json",
         "Accept":        "application/json",
     }
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    return headers
 
 
 # ─── API DISCOVERY ────────────────────────────────────────────────────────────
@@ -63,15 +87,13 @@ REFERENCE_ENDPOINTS = ["GetReferenceData", "getReferenceData", "getreferencedata
                         "reference", "stations", "Stations"]
 
 
-def try_get(url):
+def try_get(url, token):
     """Attempt a GET request. Returns (response, error_string)."""
     try:
-        r = requests.get(url, headers=auth_headers(), timeout=20)
+        r = requests.get(url, headers=auth_headers(token), timeout=20)
         print(f"    {r.status_code} → {url}")
-        if r.status_code == 404:
-            return None, f"404 at {url}"
-        if r.status_code == 401:
-            return None, f"401 Unauthorised — check API key/secret"
+        if r.status_code in (404, 401, 403):
+            return None, f"{r.status_code} at {url}"
         r.raise_for_status()
         return r, None
     except requests.HTTPError as e:
@@ -80,16 +102,16 @@ def try_get(url):
         return None, str(e)
 
 
-def discover_and_fetch():
+def discover_and_fetch(token):
     """
     Probe candidate URL combinations to find the working prices endpoint.
-    Returns the parsed JSON response or raises SystemExit.
+    Returns (working_url, parsed_json) or raises SystemExit.
     """
     print("  Probing API endpoints...")
     for base in CANDIDATE_BASES:
         for ep in PRICE_ENDPOINTS:
             url = f"{base}/{ep}"
-            resp, err = try_get(url)
+            resp, err = try_get(url, token)
             if resp is not None:
                 try:
                     data = resp.json()
@@ -100,19 +122,15 @@ def discover_and_fetch():
                     pass
 
     print("\nERROR: Could not find a working API endpoint.", file=sys.stderr)
-    print("Check that NSW_API_KEY and NSW_API_SECRET secrets are set correctly.", file=sys.stderr)
     sys.exit(1)
 
 
-def fetch_reference_data(base_url):
-    """
-    Try to fetch station reference data (includes lat/lng).
-    Returns a dict of {station_code: {name, address, suburb, postcode, lat, lng, brand}}
-    """
-    base = base_url.rsplit("/", 1)[0]  # strip the prices endpoint
+def fetch_reference_data(base_url, token):
+    """Try to fetch station reference data (lat/lng). Returns station index dict."""
+    base = base_url.rsplit("/", 1)[0]
     for ep in REFERENCE_ENDPOINTS:
         url = f"{base}/{ep}"
-        resp, _ = try_get(url)
+        resp, _ = try_get(url, token)
         if resp is None:
             continue
         try:
@@ -261,12 +279,21 @@ def main():
 
     os.makedirs(os.path.dirname(STATIONS_FILE), exist_ok=True)
 
-    # Discover the working prices endpoint
-    working_url, prices_data = discover_and_fetch()
+    # Step 1: get OAuth2 Bearer token
+    print("Getting access token...")
+    try:
+        token = get_access_token()
+    except Exception as e:
+        print(f"ERROR getting access token: {e}", file=sys.stderr)
+        sys.exit(1)
     print()
 
-    # Try to get reference data (station lat/lng)
-    station_index = fetch_reference_data(working_url)
+    # Step 2: discover the working prices endpoint
+    working_url, prices_data = discover_and_fetch(token)
+    print()
+
+    # Step 3: try to get reference data (station lat/lng)
+    station_index = fetch_reference_data(working_url, token)
     print()
 
     # Merge into stations list
