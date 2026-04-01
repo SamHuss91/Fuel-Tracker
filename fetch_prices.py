@@ -2,9 +2,6 @@
 """
 Forbes Australia — Fuel Price Tracker
 Fetches live station-level data from FuelCheck NSW API every 6 hours.
-Outputs:
-  data/stations-nsw.json  — all stations with prices (for the map)
-  data/prices.json        — city averages (for the overview block)
 """
 
 import requests
@@ -18,7 +15,6 @@ from collections import defaultdict
 
 API_KEY    = os.environ.get("NSW_API_KEY", "")
 API_SECRET = os.environ.get("NSW_API_SECRET", "")
-BASE_URL   = "https://api.onegov.nsw.gov.au/FuelCheckApp/v1/fuel"
 
 STATIONS_FILE = os.path.join(os.path.dirname(__file__), "data", "stations-nsw.json")
 PRICES_FILE   = os.path.join(os.path.dirname(__file__), "data", "prices.json")
@@ -34,15 +30,6 @@ FUEL_LABELS = {
     "LPG": "LPG",
 }
 
-# City-to-suburb mapping for city average calculations
-CITY_SUBURBS = {
-    "Sydney":    ["Sydney", "Parramatta", "Bondi", "Chatswood", "Penrith", "Liverpool",
-                  "Blacktown", "Hurstville", "Hornsby", "Campbelltown", "Manly"],
-    "Newcastle": ["Newcastle", "Maitland", "Cessnock", "Lake Macquarie", "Charlestown"],
-    "Wollongong":["Wollongong", "Shellharbour", "Kiama", "Nowra"],
-    "Central Coast":["Gosford", "Wyong", "Tuggerah", "The Entrance"],
-}
-
 EXCISE_BEFORE_CPL = 52.6
 EXCISE_AFTER_CPL  = 26.3
 
@@ -56,93 +43,208 @@ def auth_headers():
         "Authorization": f"Basic {token}",
         "apikey":        API_KEY,
         "Content-Type":  "application/json",
+        "Accept":        "application/json",
     }
 
 
-# ─── API CALLS ────────────────────────────────────────────────────────────────
+# ─── API DISCOVERY ────────────────────────────────────────────────────────────
 
-def fetch_stations():
-    print("  Fetching station reference data...")
-    resp = requests.get(f"{BASE_URL}/GetReferenceData", headers=auth_headers(), timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    # Reference data contains stations, fueltypes, brands
-    stations = data.get("stations", [])
-    print(f"  → {len(stations)} stations")
-    return stations
+# Try multiple possible base URL patterns used by API.NSW
+CANDIDATE_BASES = [
+    "https://api.onegov.nsw.gov.au/FuelCheckApp/v1/fuel",
+    "https://api.onegov.nsw.gov.au/FuelCheckApp/v2/fuel",
+    "https://api.onegov.nsw.gov.au/FuelCheck/v1/fuel",
+    "https://api.onegov.nsw.gov.au/FuelPrices/v1/fuel",
+    "https://api.onegov.nsw.gov.au/fuelcheck/v1/fuel",
+]
 
-def fetch_prices():
-    print("  Fetching live prices...")
-    resp = requests.get(f"{BASE_URL}/prices", headers=auth_headers(), timeout=30)
-    resp.raise_for_status()
-    prices = resp.json().get("prices", [])
-    print(f"  → {len(prices)} price entries")
-    return prices
+PRICE_ENDPOINTS    = ["prices", "GetAllPrices", "getAllPrices", "getallprices"]
+REFERENCE_ENDPOINTS = ["GetReferenceData", "getReferenceData", "getreferencedata",
+                        "reference", "stations", "Stations"]
 
 
-# ─── DATA PROCESSING ──────────────────────────────────────────────────────────
+def try_get(url):
+    """Attempt a GET request. Returns (response, error_string)."""
+    try:
+        r = requests.get(url, headers=auth_headers(), timeout=20)
+        print(f"    {r.status_code} → {url}")
+        if r.status_code == 404:
+            return None, f"404 at {url}"
+        if r.status_code == 401:
+            return None, f"401 Unauthorised — check API key/secret"
+        r.raise_for_status()
+        return r, None
+    except requests.HTTPError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, str(e)
 
-def merge(stations, prices):
+
+def discover_and_fetch():
     """
-    Merge station details with their current prices.
-    API prices are in cents/litre (e.g. 244.0 = $2.44/L).
-    We store as dollars for clean display.
+    Probe candidate URL combinations to find the working prices endpoint.
+    Returns the parsed JSON response or raises SystemExit.
     """
-    # Index prices by station code
-    price_index = defaultdict(dict)
-    for p in prices:
-        code  = str(p.get("stationcode") or p.get("stationid") or p.get("code") or "")
-        ftype = p.get("fueltype", "").upper()
-        raw   = p.get("price", 0)
-        if code and ftype and raw:
-            price_index[code][ftype] = round(float(raw) / 100, 3)
+    print("  Probing API endpoints...")
+    for base in CANDIDATE_BASES:
+        for ep in PRICE_ENDPOINTS:
+            url = f"{base}/{ep}"
+            resp, err = try_get(url)
+            if resp is not None:
+                try:
+                    data = resp.json()
+                    if isinstance(data, dict) and ("prices" in data or "stations" in data):
+                        print(f"  ✓ Found working endpoint: {url}")
+                        return url, data
+                except Exception:
+                    pass
 
-    result = []
+    print("\nERROR: Could not find a working API endpoint.", file=sys.stderr)
+    print("Check that NSW_API_KEY and NSW_API_SECRET secrets are set correctly.", file=sys.stderr)
+    sys.exit(1)
+
+
+def fetch_reference_data(base_url):
+    """
+    Try to fetch station reference data (includes lat/lng).
+    Returns a dict of {station_code: {name, address, suburb, postcode, lat, lng, brand}}
+    """
+    base = base_url.rsplit("/", 1)[0]  # strip the prices endpoint
+    for ep in REFERENCE_ENDPOINTS:
+        url = f"{base}/{ep}"
+        resp, _ = try_get(url)
+        if resp is None:
+            continue
+        try:
+            data = resp.json()
+            stations = (data.get("stations") or data.get("Stations") or
+                        data.get("stationlist") or [])
+            if stations:
+                print(f"  ✓ Reference data from: {url} ({len(stations)} stations)")
+                return build_station_index(stations)
+        except Exception:
+            pass
+    print("  ⚠ No reference data endpoint found — will use data embedded in prices")
+    return {}
+
+
+def build_station_index(stations):
+    idx = {}
     for s in stations:
         code = str(s.get("stationid") or s.get("code") or s.get("id") or "")
-        loc  = s.get("location", {})
-        lat  = (s.get("latitude") or s.get("lat")
-                or loc.get("latitude") or loc.get("lat"))
-        lng  = (s.get("longitude") or s.get("lng")
-                or loc.get("longitude") or loc.get("lng"))
+        if not code:
+            continue
+        loc = s.get("location") or {}
+        lat = (s.get("latitude") or s.get("lat") or
+               loc.get("latitude") or loc.get("lat"))
+        lng = (s.get("longitude") or s.get("lng") or
+               loc.get("longitude") or loc.get("lng"))
+        idx[code] = {
+            "name":     (s.get("stationname") or s.get("name") or "").strip(),
+            "brand":    (s.get("brand") or "").strip(),
+            "address":  (s.get("address") or "").strip(),
+            "suburb":   (s.get("suburb") or "").strip(),
+            "postcode": str(s.get("postcode") or "").strip(),
+            "state":    (s.get("state") or "NSW").strip(),
+            "lat":      float(lat) if lat else None,
+            "lng":      float(lng) if lng else None,
+        }
+    return idx
 
-        if not lat or not lng:
+
+# ─── MERGE ────────────────────────────────────────────────────────────────────
+
+def merge(prices_data, station_index):
+    """
+    Build station list with prices.
+    Prices are stored in cents/litre by the API — we convert to dollars.
+    """
+    prices = prices_data.get("prices") or prices_data.get("Prices") or []
+
+    # Group prices by station, also extract any embedded station data
+    by_station = defaultdict(dict)
+    embedded   = {}
+
+    for p in prices:
+        code  = str(p.get("stationcode") or p.get("stationid") or p.get("code") or "")
+        ftype = (p.get("fueltype") or p.get("FuelType") or "").upper()
+        raw   = p.get("price") or p.get("Price") or 0
+
+        if not code or not ftype:
             continue
 
-        station_prices = price_index.get(code, {})
-        if not station_prices:
-            continue  # skip stations with no prices
+        # Convert cents → dollars (handles both 244.0 and 2440 formats)
+        price_dollars = float(raw)
+        if price_dollars > 10:          # it's in cents (e.g. 244.0 or 2440)
+            price_dollars = price_dollars / (10 if price_dollars < 1000 else 100)
+        by_station[code][ftype] = round(price_dollars, 3)
 
+        # Capture any location data embedded in the price record
+        if code not in embedded:
+            loc = p.get("location") or {}
+            lat = (p.get("latitude") or p.get("lat") or
+                   loc.get("latitude") or loc.get("lat"))
+            lng = (p.get("longitude") or p.get("lng") or
+                   loc.get("longitude") or loc.get("lng"))
+            if lat and lng:
+                embedded[code] = {
+                    "name":     (p.get("stationname") or p.get("name") or "").strip(),
+                    "brand":    (p.get("brand") or "").strip(),
+                    "address":  (p.get("address") or "").strip(),
+                    "suburb":   (p.get("suburb") or "").strip(),
+                    "postcode": str(p.get("postcode") or "").strip(),
+                    "state":    (p.get("state") or "NSW"),
+                    "lat":      float(lat),
+                    "lng":      float(lng),
+                }
+
+    # Merge: prefer station_index (reference data), fall back to embedded
+    result = []
+    for code, station_prices in by_station.items():
+        info = station_index.get(code) or embedded.get(code)
+        if not info:
+            continue
+        lat, lng = info.get("lat"), info.get("lng")
+        if not lat or not lng:
+            continue
         result.append({
             "code":     code,
-            "name":     s.get("name", "").strip(),
-            "brand":    s.get("brand", "").strip(),
-            "address":  s.get("address", "").strip(),
-            "suburb":   s.get("suburb", "").strip(),
-            "postcode": str(s.get("postcode", "")).strip(),
-            "state":    s.get("state", "NSW"),
-            "lat":      round(float(lat), 6),
-            "lng":      round(float(lng), 6),
+            "name":     info["name"],
+            "brand":    info["brand"],
+            "address":  info["address"],
+            "suburb":   info["suburb"],
+            "postcode": info["postcode"],
+            "state":    info["state"],
+            "lat":      round(lat, 6),
+            "lng":      round(lng, 6),
             "prices":   station_prices,
         })
 
     return result
 
+
+# ─── CITY AVERAGES ────────────────────────────────────────────────────────────
+
+CITY_KEYWORDS = {
+    "Sydney":       ["sydney","parramatta","bondi","chatswood","penrith","liverpool",
+                     "blacktown","hurstville","hornsby","campbelltown","manly","randwick"],
+    "Newcastle":    ["newcastle","maitland","cessnock","charlestown"],
+    "Wollongong":   ["wollongong","shellharbour","kiama"],
+    "Central Coast":["gosford","wyong","tuggerah"],
+}
+
 def city_averages(stations):
-    """Calculate average prices by major city for the overview block."""
     cities = {}
-    for city, keywords in CITY_SUBURBS.items():
-        city_stations = [
-            s for s in stations
-            if any(k.lower() in s["suburb"].lower() for k in keywords)
-        ]
-        if not city_stations:
+    for city, keywords in CITY_KEYWORDS.items():
+        subset = [s for s in stations
+                  if any(k in s["suburb"].lower() for k in keywords)]
+        if not subset:
             continue
         avgs = {}
-        for ftype in ["U91", "E10", "DL", "U95", "U98"]:
-            vals = [s["prices"][ftype] for s in city_stations if ftype in s["prices"]]
+        for ft in ["U91", "E10", "DL", "U95", "U98"]:
+            vals = [s["prices"][ft] for s in subset if ft in s["prices"]]
             if vals:
-                avgs[ftype] = round(sum(vals) / len(vals), 3)
+                avgs[ft] = round(sum(vals) / len(vals), 3)
         cities[city] = avgs
     return cities
 
@@ -151,46 +253,49 @@ def city_averages(stations):
 
 def main():
     if not API_KEY or not API_SECRET:
-        print("ERROR: NSW_API_KEY and NSW_API_SECRET environment variables required.", file=sys.stderr)
+        print("ERROR: NSW_API_KEY and NSW_API_SECRET required.", file=sys.stderr)
         sys.exit(1)
 
-    now = datetime.now(timezone(timedelta(hours=10)))  # AEST
-    print(f"[{now.strftime('%Y-%m-%d %H:%M AEST')}] Fetching FuelCheck NSW...")
+    now = datetime.now(timezone(timedelta(hours=10)))
+    print(f"[{now.strftime('%Y-%m-%d %H:%M AEST')}] Fetching FuelCheck NSW...\n")
 
     os.makedirs(os.path.dirname(STATIONS_FILE), exist_ok=True)
 
-    try:
-        raw_stations = fetch_stations()
-        raw_prices   = fetch_prices()
-    except requests.HTTPError as e:
-        print(f"API error: {e}", file=sys.stderr)
+    # Discover the working prices endpoint
+    working_url, prices_data = discover_and_fetch()
+    print()
+
+    # Try to get reference data (station lat/lng)
+    station_index = fetch_reference_data(working_url)
+    print()
+
+    # Merge into stations list
+    stations = merge(prices_data, station_index)
+    print(f"Merged: {len(stations)} stations with location + prices\n")
+
+    if not stations:
+        print("ERROR: No stations with location data. Cannot build map.", file=sys.stderr)
+        print("Prices data keys:", list(prices_data.keys()), file=sys.stderr)
         sys.exit(1)
 
-    stations = merge(raw_stations, raw_prices)
-    print(f"  → {len(stations)} stations with prices after merge")
-
-    # ── stations-nsw.json (map data) ──────────────────────────────────────────
+    # stations-nsw.json
     stations_out = {
-        "updated_at":     now.isoformat(),
-        "station_count":  len(stations),
-        "fuel_types":     list(FUEL_LABELS.keys()),
-        "fuel_labels":    FUEL_LABELS,
-        "stations":       stations,
+        "updated_at":    now.isoformat(),
+        "station_count": len(stations),
+        "fuel_types":    list(FUEL_LABELS.keys()),
+        "fuel_labels":   FUEL_LABELS,
+        "stations":      stations,
     }
     with open(STATIONS_FILE, "w") as f:
-        json.dump(stations_out, f, separators=(",", ":"))  # compact for size
-    size_kb = os.path.getsize(STATIONS_FILE) / 1024
-    print(f"  Saved {STATIONS_FILE} ({size_kb:.0f} KB)")
+        json.dump(stations_out, f, separators=(",", ":"))
+    print(f"Saved {STATIONS_FILE} ({os.path.getsize(STATIONS_FILE)//1024} KB)")
 
-    # ── prices.json (overview block) ──────────────────────────────────────────
-    avgs = city_averages(stations)
-
-    # National averages (all NSW stations)
+    # prices.json
     nat = {}
-    for ftype in ["U91", "E10", "DL", "U95", "U98"]:
-        vals = [s["prices"][ftype] for s in stations if ftype in s["prices"]]
+    for ft in ["U91", "E10", "DL", "U95", "U98"]:
+        vals = [s["prices"][ft] for s in stations if ft in s["prices"]]
         if vals:
-            nat[ftype] = round(sum(vals) / len(vals), 3)
+            nat[ft] = round(sum(vals) / len(vals), 3)
 
     prices_out = {
         "updated_at": now.isoformat(),
@@ -198,27 +303,23 @@ def main():
             "before_cpl": EXCISE_BEFORE_CPL,
             "after_cpl":  EXCISE_AFTER_CPL,
             "cut_cpl":    round(EXCISE_BEFORE_CPL - EXCISE_AFTER_CPL, 1),
-            "effective_date": "2026-04-01",
         },
         "reserves": {
-            "petrol_days":   37,
-            "diesel_days":   30,
-            "jet_fuel_days": 29,
-            "as_of":         "2026-03-28",
-            "source":        "DISR / ACCC",
+            "petrol_days": 37, "diesel_days": 30, "jet_fuel_days": 29,
+            "as_of": "2026-03-28",
         },
         "national": nat,
-        "cities":   avgs,
+        "cities":   city_averages(stations),
     }
     with open(PRICES_FILE, "w") as f:
         json.dump(prices_out, f, indent=2)
-    print(f"  Saved {PRICES_FILE}")
+    print(f"Saved {PRICES_FILE}")
 
     if "U91" in nat:
-        print(f"\n  NSW avg ULP 91: ${nat['U91']:.3f}/L")
+        print(f"\nNSW avg ULP 91: ${nat['U91']:.3f}/L")
     if "DL" in nat:
-        print(f"  NSW avg Diesel: ${nat['DL']:.3f}/L")
-    print("Done.")
+        print(f"NSW avg Diesel: ${nat['DL']:.3f}/L")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
