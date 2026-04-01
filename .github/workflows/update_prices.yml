@@ -1,0 +1,35 @@
+name: Update Fuel Prices
+
+on:
+  schedule:
+    - cron: '0 21 * * *'   # 7am AEST daily (UTC+10 = 21:00 UTC previous day)
+  workflow_dispatch:         # Allow manual trigger from GitHub UI
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch prices
+        env:
+          NSW_API_KEY: ${{ secrets.NSW_API_KEY }}
+        run: python fetch_prices.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "Forbes AU Bot"
+          git config user.email "bot@forbes.com.au"
+          git add data/prices.json
+          git diff --cached --quiet || git commit -m "chore: update fuel prices $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push

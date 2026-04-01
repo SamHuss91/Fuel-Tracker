@@ -1,0 +1,46 @@
+{
+  "updated_at": "2026-04-01T08:00:00+00:00",
+  "source_note": "Live: FuelCheck NSW + WA FuelWatch. National averages: ACCC weekly monitoring.",
+  "excise": {
+    "before_cpl": 52.6,
+    "after_cpl": 26.3,
+    "cut_cpl": 26.3,
+    "effective_date": "2026-04-01"
+  },
+  "reserves": {
+    "petrol_days": 37,
+    "diesel_days": 30,
+    "jet_fuel_days": 29,
+    "as_of": "2026-03-28",
+    "source": "DISR / ACCC"
+  },
+  "cities": {
+    "Sydney":    { "ulp91": 244.0, "diesel": 303.5, "prem95": 258.0 },
+    "Melbourne": { "ulp91": 256.0, "diesel": 306.0, "prem95": 268.0 },
+    "Brisbane":  { "ulp91": 240.5, "diesel": 299.0, "prem95": 252.0 },
+    "Perth":     { "ulp91": 242.0, "diesel": 301.0, "prem95": 254.0 },
+    "Adelaide":  { "ulp91": 248.0, "diesel": 305.0, "prem95": 260.0 },
+    "Canberra":  { "ulp91": 251.0, "diesel": 307.0, "prem95": 263.0 },
+    "Darwin":    { "ulp91": 262.0, "diesel": 312.0, "prem95": 274.0 },
+    "Hobart":    { "ulp91": 255.0, "diesel": 308.0, "prem95": 267.0 }
+  },
+  "excise_passthrough": {
+    "baseline_cpl": 252.0,
+    "current_cpl": null,
+    "expected_cpl": 26.3,
+    "actual_drop_cpl": null,
+    "pct_passed": null
+  },
+  "history": [
+    { "date": "2026-03-01", "ulp91": 212.0, "diesel": 263.0 },
+    { "date": "2026-03-04", "ulp91": 218.0, "diesel": 270.0 },
+    { "date": "2026-03-08", "ulp91": 221.0, "diesel": 276.0 },
+    { "date": "2026-03-11", "ulp91": 228.0, "diesel": 282.0 },
+    { "date": "2026-03-15", "ulp91": 234.0, "diesel": 289.0 },
+    { "date": "2026-03-18", "ulp91": 239.0, "diesel": 294.0 },
+    { "date": "2026-03-22", "ulp91": 245.0, "diesel": 299.0 },
+    { "date": "2026-03-25", "ulp91": 249.0, "diesel": 302.0 },
+    { "date": "2026-03-29", "ulp91": 252.0, "diesel": 303.5 },
+    { "date": "2026-04-01", "ulp91": 244.0, "diesel": 303.5 }
+  ]
+}

@@ -1,0 +1,243 @@
+<!-- ============================================================
+  Forbes Australia — Fuel Price Tracker
+  Paste this into a Gutenberg "Custom HTML" block.
+
+  SETUP: Replace YOUR_GITHUB_USERNAME and YOUR_REPO_NAME below.
+  Add NSW_API_KEY as a GitHub secret in your repo settings.
+
+  FONTS/COLOURS: Two variables at the top of the <style> block.
+  ============================================================ -->
+
+<div id="fa-fuel-tracker">
+<style>
+  /* ── Brand tokens — adjust to match your theme ── */
+  #fa-fuel-tracker {
+    --fa-accent:   #cc0000;   /* Forbes red */
+    --fa-font:     inherit;   /* Inherits your WP theme font */
+  }
+
+  /* ── Reset & base ── */
+  #fa-fuel-tracker * { box-sizing: border-box; margin: 0; padding: 0; }
+  #fa-fuel-tracker { font-family: var(--fa-font); color: #111; line-height: 1.5; }
+
+  /* ── Crisis banner ── */
+  #fa-fuel-tracker .fa-banner {
+    background: var(--fa-accent); color: #fff;
+    padding: 10px 14px; font-size: 13px; font-weight: 600;
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 20px;
+  }
+  #fa-fuel-tracker .fa-banner-label {
+    background: #fff; color: var(--fa-accent);
+    font-size: 10px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; padding: 2px 6px; border-radius: 2px;
+    white-space: nowrap; margin-top: 1px;
+  }
+
+  /* ── Section label ── */
+  #fa-fuel-tracker .fa-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #888; margin-bottom: 10px;
+  }
+
+  /* ── Stat strip (excise + reserves) ── */
+  #fa-fuel-tracker .fa-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px; background: #e5e5e5; border: 1px solid #e5e5e5;
+    margin-bottom: 24px;
+  }
+  #fa-fuel-tracker .fa-stat {
+    background: #fff; padding: 16px;
+  }
+  #fa-fuel-tracker .fa-stat-value {
+    font-size: 28px; font-weight: 800; letter-spacing: -.02em; line-height: 1;
+  }
+  #fa-fuel-tracker .fa-stat-sub {
+    font-size: 12px; color: #666; margin-top: 4px;
+  }
+  #fa-fuel-tracker .fa-stat-value.green { color: #16803c; }
+  #fa-fuel-tracker .fa-stat-value.red   { color: var(--fa-accent); }
+  #fa-fuel-tracker .fa-stat-value.amber { color: #b45309; }
+
+  /* ── City price table ── */
+  #fa-fuel-tracker .fa-table-wrap { overflow-x: auto; margin-bottom: 24px; }
+  #fa-fuel-tracker table {
+    width: 100%; border-collapse: collapse; font-size: 14px;
+  }
+  #fa-fuel-tracker thead tr {
+    border-bottom: 2px solid #111;
+  }
+  #fa-fuel-tracker thead th {
+    text-align: right; padding: 8px 12px 8px 0;
+    font-size: 11px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; color: #444;
+    white-space: nowrap;
+  }
+  #fa-fuel-tracker thead th:first-child { text-align: left; }
+  #fa-fuel-tracker tbody tr {
+    border-bottom: 1px solid #eee;
+  }
+  #fa-fuel-tracker tbody tr:last-child { border-bottom: none; }
+  #fa-fuel-tracker tbody td {
+    padding: 11px 12px 11px 0; text-align: right; font-weight: 600;
+  }
+  #fa-fuel-tracker tbody td:first-child { text-align: left; font-weight: 700; }
+  #fa-fuel-tracker .fa-cheapest { color: #16803c; }
+  #fa-fuel-tracker .fa-priciest { color: var(--fa-accent); }
+  #fa-fuel-tracker .fa-badge {
+    display: inline-block; font-size: 9px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .05em;
+    padding: 2px 5px; border-radius: 2px; margin-left: 5px; vertical-align: middle;
+  }
+  #fa-fuel-tracker .fa-badge.green { background: #dcfce7; color: #16803c; }
+  #fa-fuel-tracker .fa-badge.red   { background: #fee2e2; color: #b91c1c; }
+
+  /* ── Excise callout box ── */
+  #fa-fuel-tracker .fa-excise-box {
+    border-left: 3px solid var(--fa-accent);
+    background: #fafafa; padding: 14px 16px; margin-bottom: 24px;
+    font-size: 13px;
+  }
+  #fa-fuel-tracker .fa-excise-box strong { font-size: 15px; }
+
+  /* ── Footer ── */
+  #fa-fuel-tracker .fa-footer {
+    font-size: 11px; color: #999; border-top: 1px solid #eee;
+    padding-top: 10px; line-height: 1.6;
+  }
+  #fa-fuel-tracker .fa-footer a { color: #999; }
+</style>
+
+  <!-- Crisis banner -->
+  <div class="fa-banner">
+    <span class="fa-banner-label">Live</span>
+    Iran's Strait of Hormuz blockade has triggered Australia's worst fuel supply crisis on record. 600+ stations ran dry. Government halved the excise from 1 April 2026.
+  </div>
+
+  <!-- Stat strip -->
+  <p class="fa-label">Key figures — updated daily</p>
+  <div class="fa-stats">
+    <div class="fa-stat">
+      <div class="fa-stat-value green">26.3c</div>
+      <div class="fa-stat-sub">Excise cut per litre<br><em>Effective 1 Apr 2026</em></div>
+    </div>
+    <div class="fa-stat">
+      <div class="fa-stat-value red" id="fa-nat-ulp">252.0c</div>
+      <div class="fa-stat-sub">National avg ULP 91<br><em>ACCC, week to 29 Mar</em></div>
+    </div>
+    <div class="fa-stat">
+      <div class="fa-stat-value red" id="fa-nat-diesel">303.5c</div>
+      <div class="fa-stat-sub">National avg Diesel<br><em>ACCC, week to 29 Mar</em></div>
+    </div>
+    <div class="fa-stat">
+      <div class="fa-stat-value amber" id="fa-reserves-petrol">37</div>
+      <div class="fa-stat-sub">Days of petrol reserves<br><em>DISR / ACCC, 28 Mar</em></div>
+    </div>
+    <div class="fa-stat">
+      <div class="fa-stat-value amber" id="fa-reserves-diesel">30</div>
+      <div class="fa-stat-sub">Days of diesel reserves<br><em>DISR / ACCC, 28 Mar</em></div>
+    </div>
+  </div>
+
+  <!-- City price table -->
+  <p class="fa-label">Capital city prices — cents per litre</p>
+  <div class="fa-table-wrap">
+    <table id="fa-city-table">
+      <thead>
+        <tr>
+          <th>City</th>
+          <th>ULP 91</th>
+          <th>Diesel</th>
+          <th>Premium 95</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Populated by script below -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Excise callout -->
+  <div class="fa-excise-box">
+    <strong>Will the excise cut reach the bowser?</strong><br>
+    From 1 April the government halved the fuel excise from 52.6c to 26.3c per litre — a saving of <strong>$13.15 on a 50L tank</strong>. Prices should drop within days as stations reprice stock. Forbes Australia is tracking whether retailers pass the full saving on. Check back daily.
+  </div>
+
+  <!-- Footer -->
+  <p class="fa-footer">
+    Sources: <a href="https://www.accc.gov.au/about-us/publications/weekly-fuel-price-monitoring-update" target="_blank" rel="noopener">ACCC Fuel Price Monitoring</a> &middot;
+    <a href="https://www.fuelcheck.nsw.gov.au" target="_blank" rel="noopener">FuelCheck NSW</a> &middot;
+    <a href="https://www.fuelwatch.wa.gov.au" target="_blank" rel="noopener">WA FuelWatch</a> &middot;
+    <a href="https://www.aip.com.au/pricing" target="_blank" rel="noopener">AIP Terminal Gate Prices</a>.<br>
+    City prices: real-time for NSW (FuelCheck) and WA (FuelWatch); ACCC weekly averages for other capitals.
+    Updated daily at 7am AEST. <span id="fa-updated"></span>
+  </p>
+
+</div>
+
+<script>
+(function () {
+  // ── UPDATE THIS URL once you've pushed the repo to GitHub ──────────────
+  // Pattern: https://cdn.jsdelivr.net/gh/YOUR_ORG/YOUR_REPO@main/data/prices.json
+  var DATA_URL = 'https://cdn.jsdelivr.net/gh/YOUR_GITHUB_ORG/fuel-tracker@main/data/prices.json';
+  // ────────────────────────────────────────────────────────────────────────
+
+  var CITIES = ['Sydney','Melbourne','Brisbane','Perth','Adelaide','Canberra','Darwin','Hobart'];
+
+  function cpl(v) { return v != null ? v.toFixed(1) + 'c' : '—'; }
+
+  function render(data) {
+    // Stat strip
+    if (data.national_averages) {
+      var na = data.national_averages;
+      if (na.ulp_cpl)    document.getElementById('fa-nat-ulp').textContent    = cpl(na.ulp_cpl);
+      if (na.diesel_cpl) document.getElementById('fa-nat-diesel').textContent = cpl(na.diesel_cpl);
+    }
+    if (data.reserves) {
+      document.getElementById('fa-reserves-petrol').textContent = data.reserves.petrol_days;
+      document.getElementById('fa-reserves-diesel').textContent = data.reserves.diesel_days;
+    }
+
+    // City table
+    var cities = data.cities || {};
+    var ulpVals = CITIES.map(function(c) { return { city: c, ulp: (cities[c] || {}).ulp91 }; }).filter(function(x) { return x.ulp; });
+    var cheapest = ulpVals.reduce(function(a,b) { return a.ulp < b.ulp ? a : b; }, ulpVals[0]);
+    var priciest = ulpVals.reduce(function(a,b) { return a.ulp > b.ulp ? a : b; }, ulpVals[0]);
+
+    var sorted = CITIES.slice().sort(function(a,b) {
+      return ((cities[a] || {}).ulp91 || 999) - ((cities[b] || {}).ulp91 || 999);
+    });
+
+    var tbody = document.querySelector('#fa-city-table tbody');
+    tbody.innerHTML = sorted.map(function(city) {
+      var p = cities[city] || {};
+      var isCheap = cheapest && city === cheapest.city;
+      var isPricey = priciest && city === priciest.city;
+      var badge = isCheap  ? '<span class="fa-badge green">Cheapest</span>'
+                : isPricey ? '<span class="fa-badge red">Priciest</span>'
+                : '';
+      var cls = isCheap ? 'fa-cheapest' : isPricey ? 'fa-priciest' : '';
+      return '<tr>'
+        + '<td>' + city + badge + '</td>'
+        + '<td class="' + cls + '">' + cpl(p.ulp91)  + '</td>'
+        + '<td class="' + cls + '">' + cpl(p.diesel) + '</td>'
+        + '<td>'                     + cpl(p.prem95) + '</td>'
+        + '</tr>';
+    }).join('');
+
+    // Updated timestamp
+    if (data.updated_at) {
+      try {
+        var d = new Date(data.updated_at);
+        document.getElementById('fa-updated').textContent =
+          'Last updated: ' + d.toLocaleString('en-AU', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
+      } catch(e) {}
+    }
+  }
+
+  fetch(DATA_URL + '?_=' + Date.now())
+    .then(function(r) { return r.json(); })
+    .then(render)
+    .catch(function(e) { console.warn('Fuel tracker: could not load data', e); });
+})();
+</script>
