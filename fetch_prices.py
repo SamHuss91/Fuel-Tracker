@@ -62,10 +62,12 @@ def auth_headers():
 # ─── API CALLS ────────────────────────────────────────────────────────────────
 
 def fetch_stations():
-    print("  Fetching station list...")
-    resp = requests.get(f"{BASE_URL}/stations", headers=auth_headers(), timeout=30)
+    print("  Fetching station reference data...")
+    resp = requests.get(f"{BASE_URL}/GetReferenceData", headers=auth_headers(), timeout=30)
     resp.raise_for_status()
-    stations = resp.json().get("stations", [])
+    data = resp.json()
+    # Reference data contains stations, fueltypes, brands
+    stations = data.get("stations", [])
     print(f"  → {len(stations)} stations")
     return stations
 
@@ -89,7 +91,7 @@ def merge(stations, prices):
     # Index prices by station code
     price_index = defaultdict(dict)
     for p in prices:
-        code  = str(p.get("stationcode", ""))
+        code  = str(p.get("stationcode") or p.get("stationid") or p.get("code") or "")
         ftype = p.get("fueltype", "").upper()
         raw   = p.get("price", 0)
         if code and ftype and raw:
@@ -97,10 +99,12 @@ def merge(stations, prices):
 
     result = []
     for s in stations:
-        code = str(s.get("code", ""))
+        code = str(s.get("stationid") or s.get("code") or s.get("id") or "")
         loc  = s.get("location", {})
-        lat  = loc.get("latitude")  or loc.get("lat")
-        lng  = loc.get("longitude") or loc.get("lng")
+        lat  = (s.get("latitude") or s.get("lat")
+                or loc.get("latitude") or loc.get("lat"))
+        lng  = (s.get("longitude") or s.get("lng")
+                or loc.get("longitude") or loc.get("lng"))
 
         if not lat or not lng:
             continue
